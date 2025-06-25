@@ -1,4 +1,6 @@
-use crate::index::IndexBuilder;
+use std::io;
+
+use crate::index::{self, IndexBuilder};
 pub struct Config {
     path: String,
 }
@@ -12,8 +14,8 @@ impl Config {
         &self.path
     }
 
-    pub fn build(self) -> IndexBuilder {
-        IndexBuilder { path: self.path }
+    pub fn build(self) -> Result<IndexBuilder,io::Error> {
+        IndexBuilder::new(self.path.clone())
     }
 }
 
@@ -22,7 +24,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let cfg = Config::new("path/to/config".to_string()).build();
-        assert_eq!(cfg.path, "path/to/config");
+        let cfg = Config::new("/usr".to_string()).build().unwrap();
+        assert_eq!(cfg.path.path(), "/usr");
     }
 }
