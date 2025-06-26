@@ -63,6 +63,7 @@ fn main() -> Result<()> {
             println!("in {:.2?}", duration);
         }
     }
+    builder.dump()?;
 
     Ok(())
 }

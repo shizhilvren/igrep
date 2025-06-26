@@ -1,3 +1,4 @@
+use bincode::{self, Decode, Encode};
 use std::{
     collections::HashMap,
     fs,
@@ -5,9 +6,11 @@ use std::{
     io::{self, Error},
 };
 
+use crate::index_file::Data;
+
 pub struct IndexBuilder {
     pub(crate) path: AbsPath,
-    index: Index,
+    index: Option<Index>,
     file_to_id: FileIDBuilder,
 }
 
@@ -17,38 +20,38 @@ struct FileIDBuilder {
 }
 
 #[derive(Default)]
-struct Index {
-    id_to_file: HashMap<FileIndex, FileContent>,
-    ngram_to_file_line: HashMap<NgramIndex, Vec<FileLine>>,
+pub(crate) struct Index {
+    pub(crate) id_to_file: HashMap<FileIndex, FileContent>,
+    pub(crate) ngram_to_file_line: HashMap<NgramIndex, Vec<FileLine>>,
 }
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct AbsPath {
     path: String,
 }
 
-struct FileContent {
+pub(crate) struct FileContent {
     full_file_name: AbsPath,
     lines: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub(crate)  struct FileIndex {
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode)]
+pub(crate) struct FileIndex {
     file_id: u32,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub(crate)  struct LineIndex {
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
+pub(crate) struct LineIndex {
     line: u32,
 }
-#[derive(Clone, PartialEq, Debug)]
-pub(crate)  struct FileLine {
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
+pub(crate) struct FileLine {
     file_id: FileIndex,
     line_id: LineIndex,
 }
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate)  enum NgramIndex {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode)]
+pub(crate) enum NgramIndex {
     Last(u8),
     Char(Box<(u8, NgramIndex)>),
 }
@@ -108,7 +111,7 @@ impl IndexBuilder {
     pub fn new(path: String) -> Result<Self, io::Error> {
         Ok(Self {
             path: AbsPath::new(path)?,
-            index: Index::default(),
+            index: Some(Index::default()),
             file_to_id: FileIDBuilder::default(),
         })
     }
@@ -118,12 +121,23 @@ impl IndexBuilder {
     pub fn index(&mut self, file: String, n: usize) -> Result<(), Error> {
         let file_content = FileContent::new(file)?;
         let file_index = self.file_to_id.get_or_insert(file_content.get_name());
-        self.index.index(file_index, file_content, n).map_err(|e| {
-            Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("Failed to index file: {}", e),
-            )
-        })?;
+        self.index
+            .as_mut()
+            .and_then(|idx| {
+                idx.index(file_index, file_content, n)
+                    .map_or(None, |e| Some(()))
+            })
+            .ok_or({
+                Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("Failed to index file",),
+                )
+            })?;
+        Ok(())
+    }
+    pub fn dump(&mut self) -> Result<(), Error> {
+        let data = Data::new(self.index.take().unwrap());
+        data.dump()?;
         Ok(())
     }
 }
@@ -150,7 +164,7 @@ impl Index {
         n: usize,
     ) -> Result<(), String> {
         let ans = self.id_to_file.insert(file_id.clone(), file_content);
-        if (ans.is_some()) {
+        if ans.is_some() {
             return Err(format!(
                 "File with id {} is already indexed",
                 file_id.file_id
@@ -192,6 +206,19 @@ impl FileIDBuilder {
             .or_insert_with(|| FileIndex { file_id: new_id })
     }
 }
+impl FileLine {
+    pub fn new(file_id: FileIndex, line_id: LineIndex) -> Self {
+        Self { file_id, line_id }
+    }
+}
+impl LineIndex {
+    pub fn new(line: u32) -> Self {
+        if line == 0 {
+            panic!("Line index cannot be zero");
+        }
+        Self { line }
+    }
+}
 #[cfg(test)]
 mod tests {
     use std::{env, path::PathBuf};
@@ -207,6 +234,7 @@ mod tests {
         assert_eq!(
             index_builder
                 .index
+                .unwrap()
                 .ngram_to_file_line
                 .get(&NgramIndex::new(&[51, 52, 53]))
                 .unwrap(),
