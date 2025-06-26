@@ -1,13 +1,29 @@
 use std::{fs, io::BufRead, time::Instant};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use igrep;
 
 /// Indexed grep tool
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct Cli {
+    /// Enable verbose output
+    #[arg(long, global = true)]
+    verbose: bool,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Index files for faster searching
+    Index(IndexArgs),
+}
+
+#[derive(Parser)]
+struct IndexArgs {
     /// Sets the file to be indexed
     #[arg(short, long, required = true)]
     file_list: String,
@@ -22,11 +38,18 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    println!("Welcome to igrep!");
+    let cli = Cli::parse();
+    
+    if cli.verbose {
+        println!("Welcome to igrep!");
+    }
 
-    // 解析命令行参数
-    let args = Args::parse();
+    match cli.command {
+        Commands::Index(args) => run_index(args, cli.verbose),
+    }
+}
 
+fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     // 创建索引构建器
     let mut builder = igrep::index_builder::IndexBuilder::new(args.config)?;
 
@@ -46,7 +69,9 @@ fn main() -> Result<()> {
     // 处理每个文件
     for (index, file_name) in file_lines.iter().enumerate() {
         // 显示进度
-        print!("Indexing file {}/{}: {}", index + 1, total_files, file_name);
+        if verbose {
+            print!("Indexing file {}/{}: {}", index + 1, total_files, file_name);
+        }
 
         // 记录开始时间
         let start_time = Instant::now();
@@ -59,7 +84,7 @@ fn main() -> Result<()> {
 
         if let Err(e) = result {
             eprintln!("Error indexing file: {} - {}", file_name, e);
-        } else {
+        } else if verbose {
             println!("in {:.2?}", duration);
         }
     }
