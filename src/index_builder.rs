@@ -2,9 +2,7 @@ use std::{
     collections::HashMap,
     fs,
     hash::Hash,
-    io::{self, BufRead, Error},
-    path::PathBuf,
-    str::FromStr,
+    io::{self, Error},
 };
 
 pub struct IndexBuilder {
@@ -34,23 +32,23 @@ struct FileContent {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-struct FileIndex {
+pub(crate)  struct FileIndex {
     file_id: u32,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct LineIndex {
+pub(crate)  struct LineIndex {
     line: u32,
 }
 #[derive(Clone, PartialEq, Debug)]
-struct FileLine {
+pub(crate)  struct FileLine {
     file_id: FileIndex,
     line_id: LineIndex,
 }
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum NgramIndex {
+pub(crate)  enum NgramIndex {
     Last(u8),
     Char(Box<(u8, NgramIndex)>),
 }
@@ -94,8 +92,12 @@ impl FileContent {
         &self.lines
     }
 
+    /// # panic
     pub fn get_line(&self, line_number: usize) -> Option<&String> {
-        self.lines.get(line_number)
+        match line_number {
+            0 => None, // Lines are 1-indexed
+            _ => self.lines.get(line_number - 1),
+        }
     }
     pub fn get_name(&self) -> &AbsPath {
         &self.full_file_name
@@ -115,8 +117,13 @@ impl IndexBuilder {
     /// Panic if `n` is zero.
     pub fn index(&mut self, file: String, n: usize) -> Result<(), Error> {
         let file_content = FileContent::new(file)?;
-        let file_index = self.file_to_id.getOrInsert(file_content.get_name());
-        self.index.index(file_index, file_content, n);
+        let file_index = self.file_to_id.get_or_insert(file_content.get_name());
+        self.index.index(file_index, file_content, n).map_err(|e| {
+            Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Failed to index file: {}", e),
+            )
+        })?;
         Ok(())
     }
 }
@@ -136,9 +143,19 @@ impl Index {
     /// # panic
     /// Panic if the `file_id` is found in the index.
     /// Panic if the ` n` is zero.
-    fn index(&mut self, file_id: &FileIndex, file_content: FileContent, n: usize) {
+    fn index(
+        &mut self,
+        file_id: &FileIndex,
+        file_content: FileContent,
+        n: usize,
+    ) -> Result<(), String> {
         let ans = self.id_to_file.insert(file_id.clone(), file_content);
-        assert!(ans.is_none(), "File ID already exists in the index");
+        if (ans.is_some()) {
+            return Err(format!(
+                "File with id {} is already indexed",
+                file_id.file_id
+            ));
+        }
         let file_content = self.id_to_file.get(file_id).unwrap();
         file_content
             .lines()
@@ -163,11 +180,12 @@ impl Index {
                         .push(file_line.clone());
                 });
             });
+        Ok(())
     }
 }
 
 impl FileIDBuilder {
-    fn getOrInsert(&mut self, path: &AbsPath) -> &FileIndex {
+    fn get_or_insert(&mut self, path: &AbsPath) -> &FileIndex {
         let new_id = self.file_to_id.len() as u32;
         self.file_to_id
             .entry(path.clone())
@@ -176,14 +194,14 @@ impl FileIDBuilder {
 }
 #[cfg(test)]
 mod tests {
-    use std::env;
+    use std::{env, path::PathBuf};
 
     use super::*;
 
     #[test]
     fn test_index() {
         let mut index_builder = IndexBuilder::new("test".to_string()).unwrap();
-        let result = index_builder
+        index_builder
             .index("test/file".to_string(), 3_usize)
             .unwrap();
         assert_eq!(
@@ -249,7 +267,16 @@ mod tests {
         assert!(file_content.is_ok());
         let content = file_content.unwrap();
         assert!(!content.lines().is_empty());
-        assert!(content.get_line(0).is_some());
+        assert!(content.get_line(0).is_none());
+        assert!(content.get_line(1).is_some());
+    }
+
+    #[test]
+    fn test_file_line() {
+        let file_content = FileContent::new("test/file".to_string());
+        assert!(file_content.is_ok());
+        let content = file_content.unwrap();
+        assert_eq!(content.get_line(2).unwrap(), "98765");
     }
 
     #[test]
@@ -271,9 +298,9 @@ mod tests {
     fn test_file_id_builder_make_or_insert() {
         let mut file_id_builder = FileIDBuilder::default();
         let abs_path = AbsPath::new("test/textfile".to_string()).unwrap();
-        let file_index = file_id_builder.getOrInsert(&abs_path);
+        let file_index = file_id_builder.get_or_insert(&abs_path);
         assert_eq!(file_index.file_id, 0);
-        let file_index2 = file_id_builder.getOrInsert(&abs_path);
+        let file_index2 = file_id_builder.get_or_insert(&abs_path);
         assert_eq!(file_index2.file_id, 0);
         assert_eq!(file_id_builder.file_to_id.len(), 1);
     }
