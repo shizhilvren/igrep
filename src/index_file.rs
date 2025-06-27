@@ -1,4 +1,4 @@
-use crate::index_builder::{FileContent, FileIndex, FileLine, Index, LineIndex, NgramIndex};
+use crate::index_builder::{FileContent, FileIndex, FileLineIndex, Index, LineIndex, NgramIndex};
 use bincode::{self, Decode, Encode};
 use std::{
     collections::HashMap,
@@ -23,7 +23,7 @@ pub struct NgramRange(pub Range);
 
 pub struct Data {
     file_paths: Vec<(FileIndex, FilePathData)>,
-    file_lines: Vec<(FileLine, FileLineData)>,
+    file_lines: Vec<(FileLineIndex, FileLineData)>,
     ngrams: Vec<(NgramIndex, NgramData)>,
     bincode_config: bincode::config::Configuration,
 }
@@ -33,13 +33,13 @@ pub struct FileLineData(String);
 #[derive(Decode, Encode)]
 pub struct FilePathData(String);
 
-#[derive(Decode, Encode)]
-pub struct NgramData(Vec<FileLine>);
+#[derive(Decode, Encode, Debug)]
+pub struct NgramData(Vec<FileLineIndex>);
 
 #[derive(Decode, Encode)]
 pub struct IndexData {
     id_to_file: HashMap<FileIndex, AbsPathRange>,
-    file_line: HashMap<FileLine, FileLineRange>,
+    file_line: HashMap<FileLineIndex, FileLineRange>,
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
 }
 
@@ -67,13 +67,13 @@ impl Data {
                     .map(|(id, line)| (id + 1, line))
                     .map(|(line_id, line)| {
                         let file_line =
-                            FileLine::new(file_index.clone(), LineIndex::new(line_id as u32));
+                            FileLineIndex::new(file_index.clone(), LineIndex::new(line_id as u32));
                         (file_line, FileLineData(line.into()))
                     })
                     .collect::<Vec<_>>()
             })
             .flatten()
-            .collect::<Vec<(FileLine, FileLineData)>>();
+            .collect::<Vec<(FileLineIndex, FileLineData)>>();
         let ngrams = index
             .ngram_to_file_line
             .into_iter()
@@ -109,14 +109,9 @@ impl Data {
         self.file_paths
             .iter()
             .map(|(file_index, file_path_data)| {
-                bincode::encode_to_vec(file_path_data, self.bincode_config.clone())
+                file_path_data
+                    .to_data()
                     .and_then(|data| Ok((file_index.clone(), data)))
-                    .map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Failed to encode file path data: {}", e),
-                        )
-                    })
             })
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
@@ -145,14 +140,9 @@ impl Data {
         self.file_lines
             .iter()
             .map(|(file_line, file_data)| {
-                bincode::encode_to_vec(file_data, self.bincode_config.clone())
+                file_data
+                    .to_data()
                     .and_then(|data| Ok((file_line.clone(), data)))
-                    .map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Failed to encode file line data: {}", e),
-                        )
-                    })
             })
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
@@ -181,14 +171,9 @@ impl Data {
         self.ngrams
             .iter()
             .map(|(ngram_index, file_lines)| {
-                bincode::encode_to_vec(file_lines, self.bincode_config.clone())
+                file_lines
+                    .to_data()
                     .and_then(|data| Ok((ngram_index.clone(), data)))
-                    .map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Failed to encode ngram data: {}", e),
-                        )
-                    })
             })
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
@@ -220,23 +205,21 @@ impl IndexData {
         }
     }
 
-    pub fn from_data(data: Vec<u8>) -> Result<Self, io::Error> {
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to decode index data: {}", e),
-                )
-            })
-            .map(|(index_data, _)| index_data)
-    }
-
     pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<&NgramRange> {
         self.ngram_to_file_line.get(ngram_index)
     }
+
+    pub fn get_file_line_range(&self, file_line_index: &FileLineIndex) -> Option<&FileLineRange> {
+        self.file_line.get(file_line_index)
+    }
+
+    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<&AbsPathRange> {
+        self.id_to_file.get(file_index)
+    }
+
     pub(crate) fn add_file_line(
         &mut self,
-        file_line: FileLine,
+        file_line: FileLineIndex,
         range: FileLineRange,
     ) -> Option<FileLineRange> {
         self.file_line.insert(file_line, range)
@@ -296,10 +279,27 @@ impl Range {
     }
 }
 
-pub trait FromData {
+impl NgramData {
+    pub fn file_lines(&self) -> &Vec<FileLineIndex> {
+        &self.0
+    }
+}
+
+impl FileLineData {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+}
+
+impl FilePathData {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+}
+pub trait FromToData {
     fn from_data(data: Vec<u8>) -> Result<Self, io::Error>
     where
-        Self: Decode<()> + Encode,
+        Self: Decode<()>,
     {
         bincode::decode_from_slice(&data, bincode::config::standard())
             .map_err(|e| {
@@ -310,8 +310,28 @@ pub trait FromData {
             })
             .map(|(index_data, _)| index_data)
     }
+    fn to_data(&self) -> Result<Vec<u8>, io::Error>
+    where
+        Self: Encode,
+    {
+        bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to encode index data: {}", e),
+            )
+        })
+    }
 }
 
-impl NgramData for FromData{
-    
-}
+impl FromToData for NgramData {}
+impl FromToData for NgramRange {}
+impl FromToData for NgramIndex {}
+
+impl FromToData for FileLineData {}
+impl FromToData for FileLineRange {}
+impl FromToData for FileLineIndex {}
+
+impl FromToData for FileIndex {}
+impl FromToData for FilePathData {}
+impl FromToData for AbsPathRange {}
+impl FromToData for IndexData {}

@@ -22,7 +22,7 @@ struct FileIDBuilder {
 #[derive(Default)]
 pub(crate) struct Index {
     pub(crate) id_to_file: HashMap<FileIndex, FileContent>,
-    pub(crate) ngram_to_file_line: HashMap<NgramIndex, Vec<FileLine>>,
+    pub(crate) ngram_to_file_line: HashMap<NgramIndex, Vec<FileLineIndex>>,
 }
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct AbsPath {
@@ -35,16 +35,16 @@ pub(crate) struct FileContent {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode)]
-pub(crate) struct FileIndex {
+pub struct FileIndex {
     file_id: u32,
 }
 
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
-pub(crate) struct LineIndex {
+pub struct LineIndex {
     line: u32,
 }
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
-pub(crate) struct FileLine {
+pub struct FileLineIndex {
     file_id: FileIndex,
     line_id: LineIndex,
 }
@@ -177,7 +177,7 @@ impl Index {
             .enumerate()
             .map(|(id, line)| (id + 1, line))
             .map(|(line_id, line)| {
-                let file_line = FileLine {
+                let file_line = FileLineIndex {
                     file_id: file_id.clone(),
                     line_id: LineIndex {
                         line: line_id as u32,
@@ -206,9 +206,15 @@ impl FileIDBuilder {
             .or_insert_with(|| FileIndex { file_id: new_id })
     }
 }
-impl FileLine {
+impl FileLineIndex {
     pub fn new(file_id: FileIndex, line_id: LineIndex) -> Self {
         Self { file_id, line_id }
+    }
+    pub fn file_id(&self) -> &FileIndex {
+        &self.file_id
+    }
+    pub fn line_id(&self) -> &LineIndex {
+        &self.line_id
     }
 }
 impl LineIndex {
@@ -217,6 +223,9 @@ impl LineIndex {
             panic!("Line index cannot be zero");
         }
         Self { line }
+    }
+    pub fn line_number(&self) -> u32 {
+        self.line
     }
 }
 #[cfg(test)]
@@ -238,7 +247,7 @@ mod tests {
                 .ngram_to_file_line
                 .get(&NgramIndex::new(&[51, 52, 53]))
                 .unwrap(),
-            &vec![FileLine {
+            &vec![FileLineIndex {
                 file_id: FileIndex { file_id: 0 },
                 line_id: LineIndex { line: 1 }
             }]

@@ -1,12 +1,16 @@
 use std::{
     fs,
-    io::{BufRead, Read, Seek},
+    io::{self, BufRead, Read, Seek},
     time::Instant,
 };
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use igrep::{self, index_builder::NgramIndex, index_file};
+use igrep::{
+    self,
+    index_builder::NgramIndex,
+    index_file::{self, FileLineData, FilePathData, FromToData, NgramData},
+};
 
 /// Indexed grep tool
 #[derive(Parser)]
@@ -134,7 +138,37 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     if let Some(range) = ngram_range {
         let file = format!("{}/igrep.dat", args.config);
         let data = read_range(&file, range.0.start, range.0.start + range.0.len)?;
-        println!("Ngram data: {:?}", data);
+        let ngram_data = NgramData::from_data(data)?;
+        println!("Ngram data: {:?}", &ngram_data);
+        ngram_data
+            .file_lines()
+            .into_iter()
+            .for_each(|file_line_index| {
+                let file_line_range = index_data.get_file_line_range(file_line_index).unwrap();
+                let file_range = index_data
+                    .get_file_range(file_line_index.file_id())
+                    .unwrap();
+                let file_line_data = read_range(
+                    &format!("{}/igrep.dat", args.config),
+                    file_line_range.0.start,
+                    file_line_range.0.start + file_line_range.0.len,
+                )
+                .unwrap();
+                let file_data = read_range(
+                    &format!("{}/igrep.dat", args.config),
+                    file_range.0.start,
+                    file_range.0.start + file_range.0.len,
+                )
+                .unwrap();
+                let file_line_data = FileLineData::from_data(file_line_data).unwrap();
+                let file_data = FilePathData::from_data(file_data).unwrap();
+                println!(
+                    "{}:{} {}",
+                    file_data.get(),
+                    file_line_index.line_id().line_number(),
+                    file_line_data.get()
+                );
+            });
     }
     // 这里将来可以添加实际的搜索实现
     // TODO: 实现索引搜索功能
@@ -143,11 +177,7 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-fn read_range(
-    file: &str,
-    start: usize,
-    end: usize,
-) -> Result<Vec<u8>, std::io::Error> {
+fn read_range(file: &str, start: usize, end: usize) -> Result<Vec<u8>, std::io::Error> {
     let mut file = fs::File::open(file)?;
     let mut buffer = vec![0; end - start];
     file.seek(std::io::SeekFrom::Start(start as u64))?;
