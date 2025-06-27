@@ -6,25 +6,25 @@ use std::{
     io::{self, Write},
 };
 
-#[derive(Decode, Encode)]
+#[derive(Debug, Decode, Encode)]
 pub struct Range {
     pub start: usize,
     pub len: usize,
 }
 
-#[derive(Decode, Encode)]
-pub struct FileLineRange(Range);
+#[derive(Debug, Decode, Encode)]
+pub struct FileLineRange(pub Range);
 
-#[derive(Decode, Encode)]
-pub struct AbsPathRange(Range);
+#[derive(Debug, Decode, Encode)]
+pub struct AbsPathRange(pub Range);
 
-#[derive(Decode, Encode)]
-pub struct NgramRange(Range);
+#[derive(Debug, Decode, Encode)]
+pub struct NgramRange(pub Range);
 
 pub struct Data {
     file_paths: Vec<(FileIndex, FilePathData)>,
     file_lines: Vec<(FileLine, FileLineData)>,
-    ngrams: Vec<(NgramIndex, Vec<FileLine>)>,
+    ngrams: Vec<(NgramIndex, NgramData)>,
     bincode_config: bincode::config::Configuration,
 }
 #[derive(Decode, Encode)]
@@ -77,7 +77,7 @@ impl Data {
         let ngrams = index
             .ngram_to_file_line
             .into_iter()
-            .map(|(ngram_inde, filelines)| (ngram_inde, filelines))
+            .map(|(ngram_index, filelines)| (ngram_index, NgramData(filelines)))
             .collect();
         Self {
             file_paths,
@@ -219,6 +219,21 @@ impl IndexData {
             ngram_to_file_line: HashMap::new(),
         }
     }
+
+    pub fn from_data(data: Vec<u8>) -> Result<Self, io::Error> {
+        bincode::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to decode index data: {}", e),
+                )
+            })
+            .map(|(index_data, _)| index_data)
+    }
+
+    pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<&NgramRange> {
+        self.ngram_to_file_line.get(ngram_index)
+    }
     pub(crate) fn add_file_line(
         &mut self,
         file_line: FileLine,
@@ -254,10 +269,49 @@ impl IndexData {
         output.write_all(&encoded)?;
         Ok(())
     }
+
+    pub fn show_info(&self) {
+        println!("Index contains:");
+        println!(
+            "  {} files {}",
+            self.id_to_file.len(),
+            std::mem::size_of::<AbsPathRange>()
+        );
+        println!(
+            "  {} file lines {}",
+            self.file_line.len(),
+            std::mem::size_of::<FileLineRange>()
+        );
+        println!(
+            "  {} ngrams {}",
+            self.ngram_to_file_line.len(),
+            std::mem::size_of::<NgramRange>()
+        );
+    }
 }
 
 impl Range {
     pub fn new(start: usize, len: usize) -> Self {
         Range { start, len }
     }
+}
+
+pub trait FromData {
+    fn from_data(data: Vec<u8>) -> Result<Self, io::Error>
+    where
+        Self: Decode<()> + Encode,
+    {
+        bincode::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to decode index data: {}", e),
+                )
+            })
+            .map(|(index_data, _)| index_data)
+    }
+}
+
+impl NgramData for FromData{
+    
 }

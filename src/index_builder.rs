@@ -51,7 +51,7 @@ pub(crate) struct FileLine {
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode)]
-pub(crate) enum NgramIndex {
+pub enum NgramIndex {
     Last(u8),
     Char(Box<(u8, NgramIndex)>),
 }

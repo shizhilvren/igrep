@@ -1,8 +1,12 @@
-use std::{fs, io::BufRead, time::Instant};
+use std::{
+    fs,
+    io::{BufRead, Read, Seek},
+    time::Instant,
+};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use igrep;
+use igrep::{self, index_builder::NgramIndex, index_file};
 
 /// Indexed grep tool
 #[derive(Parser)]
@@ -20,6 +24,8 @@ struct Cli {
 enum Commands {
     /// Index files for faster searching
     Index(IndexArgs),
+    /// Search through indexed files
+    Search(SearchArgs),
 }
 
 #[derive(Parser)]
@@ -37,15 +43,27 @@ struct IndexArgs {
     ngram: usize,
 }
 
+#[derive(Parser)]
+struct SearchArgs {
+    /// Sets the config file path
+    #[arg(short, long, required = true)]
+    config: String,
+
+    /// The search term to look for
+    #[arg(required = true)]
+    search_term: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     if cli.verbose {
         println!("Welcome to igrep!");
     }
 
     match cli.command {
         Commands::Index(args) => run_index(args, cli.verbose),
+        Commands::Search(args) => run_search(args, cli.verbose),
     }
 }
 
@@ -91,4 +109,48 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     builder.dump()?;
 
     Ok(())
+}
+
+fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("Searching for '{}' in indexed files...", args.search_term);
+    }
+
+    // 现在索引搜索功能还没有实现，所以这里仅添加基础结构
+    println!("Using config directory: {}", args.config);
+    println!("Search term: {}", args.search_term);
+
+    let mut idx_file = fs::OpenOptions::new()
+        .read(true)
+        .write(false)
+        .open(format!("{}/igrep.idx", args.config))?;
+    let mut idx_buf = Vec::new();
+    idx_file.read_to_end(&mut idx_buf)?;
+    let index_data = index_file::IndexData::from_data(idx_buf)?;
+    index_data.show_info();
+    let ngram = NgramIndex::new(args.search_term.as_bytes());
+    let ngram_range = index_data.get_ngram_range(&ngram);
+    println!("Ngram range: {:?}", ngram_range);
+    if let Some(range) = ngram_range {
+        let file = format!("{}/igrep.dat", args.config);
+        let data = read_range(&file, range.0.start, range.0.start + range.0.len)?;
+        println!("Ngram data: {:?}", data);
+    }
+    // 这里将来可以添加实际的搜索实现
+    // TODO: 实现索引搜索功能
+    println!("Search functionality is not fully implemented yet.");
+
+    Ok(())
+}
+
+fn read_range(
+    file: &str,
+    start: usize,
+    end: usize,
+) -> Result<Vec<u8>, std::io::Error> {
+    let mut file = fs::File::open(file)?;
+    let mut buffer = vec![0; end - start];
+    file.seek(std::io::SeekFrom::Start(start as u64))?;
+    file.read_exact(&mut buffer)?;
+    Ok(buffer)
 }
