@@ -10,6 +10,11 @@ use igrep::{
     self,
     index_builder::NgramIndex,
     index_file::{self, FileData, FileLineData, FromToData, NgramData},
+    index_regex,
+};
+use regex_syntax::{
+    hir::{Hir, HirKind, Literal},
+    parse,
 };
 
 /// Indexed grep tool
@@ -173,9 +178,13 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
                 );
             });
     }
-    // 这里将来可以添加实际的搜索实现
-    // TODO: 实现索引搜索功能
-    println!("Search functionality is not fully implemented yet.");
+    let engine = index_regex::Engine::new(args.search_term.as_str())?;
+    let tree= engine.ngram(3);
+    let simple_tree= tree.clone().simple();
+    println!("Ngram tree: {:?}", &tree);
+    println!("Ngram simple tree: {:?}", &simple_tree);
+    let regex = parse(args.search_term.as_str())?;
+    println!("Parsed regex: {:?}", regex);
 
     Ok(())
 }

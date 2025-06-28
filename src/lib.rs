@@ -1,6 +1,7 @@
 pub mod config;
 pub mod index_builder;
 pub mod index_file;
+pub mod index_regex;
 
 #[cfg(test)]
 mod tests {

@@ -59,9 +59,8 @@ impl NgramIndex {
     /// # Panics
     ///
     /// Panics if `n` size is zero.
-    pub fn from_str(s: &str, n: usize) -> HashSet<NgramIndex> {
-        s.as_bytes()
-            .windows(n)
+    pub fn from_str(s: &[u8], n: usize) -> HashSet<NgramIndex> {
+        s.windows(n)
             .map(|ngram| NgramIndex::new(ngram))
             .collect::<HashSet<_>>()
     }
@@ -183,7 +182,7 @@ impl Index {
                         line: line_id as u32,
                     },
                 };
-                let ngrams = NgramIndex::from_str(line.as_str(), n);
+                let ngrams = NgramIndex::from_str(line.as_bytes(), n);
                 (file_line, ngrams)
             })
             .for_each(|(file_line, ngras)| {
@@ -255,7 +254,7 @@ mod tests {
     }
     #[test]
     fn test_ngram_index_from_str() {
-        let ngrams = NgramIndex::from_str("hello", 3);
+        let ngrams = NgramIndex::from_str("hello".as_bytes(), 3);
         let ngrams = ngrams.into_iter().collect::<HashSet<_>>();
         assert_eq!(ngrams.len(), 3);
         let expected = HashSet::from([
