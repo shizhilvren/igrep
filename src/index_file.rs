@@ -16,30 +16,31 @@ pub struct Range {
 pub struct FileLineRange(pub Range);
 
 #[derive(Debug, Decode, Encode)]
-pub struct AbsPathRange(pub Range);
+pub struct FileRange(pub Range);
 
 #[derive(Debug, Decode, Encode)]
 pub struct NgramRange(pub Range);
 
 pub struct Data {
-    file_paths: Vec<(FileIndex, FilePathData)>,
     file_lines: Vec<(FileLineIndex, FileLineData)>,
+    file_paths: HashMap<FileIndex, FileData>,
     ngrams: Vec<(NgramIndex, NgramData)>,
-    bincode_config: bincode::config::Configuration,
 }
 #[derive(Decode, Encode)]
 pub struct FileLineData(String);
 
 #[derive(Decode, Encode)]
-pub struct FilePathData(String);
+pub struct FileData {
+    name: String,
+    lines_range: HashMap<LineIndex, FileLineRange>,
+}
 
 #[derive(Decode, Encode, Debug)]
 pub struct NgramData(Vec<FileLineIndex>);
 
 #[derive(Decode, Encode)]
 pub struct IndexData {
-    id_to_file: HashMap<FileIndex, AbsPathRange>,
-    file_line: HashMap<FileLineIndex, FileLineRange>,
+    id_to_file: HashMap<FileIndex, FileRange>,
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
 }
 
@@ -52,12 +53,13 @@ impl Data {
                 (
                     (
                         file_index.clone(),
-                        FilePathData(file_content.get_name().path().to_string()),
+                        FileData::new(file_content.get_name().path().to_string()),
                     ),
                     (file_index, file_content),
                 )
             })
             .unzip();
+        let file_paths = file_paths.into_iter().collect::<HashMap<_, _>>();
         let file_lines = content
             .into_iter()
             .map(|(file_index, file)| {
@@ -83,21 +85,33 @@ impl Data {
             file_paths,
             file_lines,
             ngrams,
-            bincode_config: bincode::config::standard(),
         }
     }
 
-    pub fn dump(&self) -> Result<(), io::Error> {
+    pub fn dump(&mut self) -> Result<(), io::Error> {
         let mut index_data = IndexData::new();
         let mut output = fs::File::create("igrep.dat")?;
         let offset = 0_usize;
 
-        let offset = self.dump_id_to_file(&mut index_data, &mut output, offset)?;
         let offset = self.dump_file_lines(&mut index_data, &mut output, offset)?;
+        let offset = self.dump_id_to_file(&mut index_data, &mut output, offset)?;
         let _offset = self.dump_ngrams(&mut index_data, &mut output, offset)?;
 
         index_data.dump()?;
         Ok(())
+    }
+
+    fn insert_file_lines_range(
+        &mut self,
+        file_line_index: &FileLineIndex,
+        file_line_range: FileLineRange,
+    ) {
+        assert!(self.file_paths.contains_key(file_line_index.file_id()));
+        self.file_paths
+            .entry(file_line_index.file_id().clone())
+            .and_modify(|file_data| {
+                file_data.insert_line_range(file_line_index.line_id().clone(), file_line_range);
+            });
     }
 
     fn dump_id_to_file(
@@ -117,7 +131,7 @@ impl Data {
             .into_iter()
             .try_fold(offset, |offset, (file_index, data)| {
                 let len = data.len();
-                let range = AbsPathRange(Range::new(offset, len));
+                let range = FileRange(Range::new(offset, len));
                 output.write_all(&data)?;
                 index_data.add_file(file_index.clone(), range).map_or_else(
                     || Ok(len + offset),
@@ -132,7 +146,7 @@ impl Data {
     }
 
     fn dump_file_lines(
-        &self,
+        &mut self,
         index_data: &mut IndexData,
         output: &mut fs::File,
         offset: usize,
@@ -150,15 +164,8 @@ impl Data {
                 let len = data.len();
                 let range = FileLineRange(Range::new(offset, len));
                 output.write_all(&data)?;
-                index_data.add_file_line(file_line, range).map_or_else(
-                    || Ok(len + offset),
-                    |_| {
-                        Err(io::Error::new(
-                            io::ErrorKind::AlreadyExists,
-                            format!("File line already exists in index"),
-                        ))
-                    },
-                )
+                self.insert_file_lines_range(&file_line, range);
+                Ok(len + offset)
             })
     }
 
@@ -200,7 +207,6 @@ impl IndexData {
     pub(crate) fn new() -> Self {
         IndexData {
             id_to_file: HashMap::new(),
-            file_line: HashMap::new(),
             ngram_to_file_line: HashMap::new(),
         }
     }
@@ -209,27 +215,15 @@ impl IndexData {
         self.ngram_to_file_line.get(ngram_index)
     }
 
-    pub fn get_file_line_range(&self, file_line_index: &FileLineIndex) -> Option<&FileLineRange> {
-        self.file_line.get(file_line_index)
-    }
-
-    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<&AbsPathRange> {
+    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<&FileRange> {
         self.id_to_file.get(file_index)
-    }
-
-    pub(crate) fn add_file_line(
-        &mut self,
-        file_line: FileLineIndex,
-        range: FileLineRange,
-    ) -> Option<FileLineRange> {
-        self.file_line.insert(file_line, range)
     }
 
     pub(crate) fn add_file(
         &mut self,
         file_index: FileIndex,
-        range: AbsPathRange,
-    ) -> Option<AbsPathRange> {
+        range: FileRange,
+    ) -> Option<FileRange> {
         self.id_to_file.insert(file_index, range)
     }
 
@@ -258,12 +252,7 @@ impl IndexData {
         println!(
             "  {} files {}",
             self.id_to_file.len(),
-            std::mem::size_of::<AbsPathRange>()
-        );
-        println!(
-            "  {} file lines {}",
-            self.file_line.len(),
-            std::mem::size_of::<FileLineRange>()
+            std::mem::size_of::<FileRange>()
         );
         println!(
             "  {} ngrams {}",
@@ -291,9 +280,23 @@ impl FileLineData {
     }
 }
 
-impl FilePathData {
-    pub fn get(&self) -> &String {
-        &self.0
+impl FileData {
+    pub fn new(name: String) -> Self {
+        FileData {
+            name,
+            lines_range: HashMap::new(),
+        }
+    }
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+    pub fn lines_range(&self, line_index: &LineIndex) -> Option<&FileLineRange> {
+        self.lines_range.get(line_index)
+    }
+
+    pub fn insert_line_range(&mut self, line_index: LineIndex, range: FileLineRange) {
+        assert!(!self.lines_range.contains_key(&line_index));
+        self.lines_range.entry(line_index).or_insert(range);
     }
 }
 pub trait FromToData {
@@ -323,6 +326,8 @@ pub trait FromToData {
     }
 }
 
+impl FromToData for IndexData {}
+
 impl FromToData for NgramData {}
 impl FromToData for NgramRange {}
 impl FromToData for NgramIndex {}
@@ -332,6 +337,5 @@ impl FromToData for FileLineRange {}
 impl FromToData for FileLineIndex {}
 
 impl FromToData for FileIndex {}
-impl FromToData for FilePathData {}
-impl FromToData for AbsPathRange {}
-impl FromToData for IndexData {}
+impl FromToData for FileRange {}
+impl FromToData for FileData {}

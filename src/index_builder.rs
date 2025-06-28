@@ -1,6 +1,6 @@
 use bincode::{self, Decode, Encode};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     hash::Hash,
     io::{self, Error},
@@ -64,6 +64,8 @@ impl NgramIndex {
         s.as_bytes()
             .windows(n)
             .map(|ngram| NgramIndex::new(ngram))
+            .collect::<HashSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>()
     }
     /// # Panics
@@ -136,7 +138,7 @@ impl IndexBuilder {
         Ok(())
     }
     pub fn dump(&mut self) -> Result<(), Error> {
-        let data = Data::new(self.index.take().unwrap());
+        let mut data = Data::new(self.index.take().unwrap());
         data.dump()?;
         Ok(())
     }

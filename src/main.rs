@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use igrep::{
     self,
     index_builder::NgramIndex,
-    index_file::{self, FileLineData, FilePathData, FromToData, NgramData},
+    index_file::{self, FileData, FileLineData, FromToData, NgramData},
 };
 
 /// Indexed grep tool
@@ -144,27 +144,30 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
             .file_lines()
             .into_iter()
             .for_each(|file_line_index| {
-                let file_line_range = index_data.get_file_line_range(file_line_index).unwrap();
                 let file_range = index_data
                     .get_file_range(file_line_index.file_id())
                     .unwrap();
-                let file_line_data = read_range(
-                    &format!("{}/igrep.dat", args.config),
-                    file_line_range.0.start,
-                    file_line_range.0.start + file_line_range.0.len,
-                )
-                .unwrap();
+
                 let file_data = read_range(
                     &format!("{}/igrep.dat", args.config),
                     file_range.0.start,
                     file_range.0.start + file_range.0.len,
                 )
                 .unwrap();
+                let file_data = FileData::from_data(file_data).unwrap();
+
+                let file_line_range = file_data.lines_range(file_line_index.line_id()).unwrap();
+                let file_line_data = read_range(
+                    &format!("{}/igrep.dat", args.config),
+                    file_line_range.0.start,
+                    file_line_range.0.start + file_line_range.0.len,
+                )
+                .unwrap();
                 let file_line_data = FileLineData::from_data(file_line_data).unwrap();
-                let file_data = FilePathData::from_data(file_data).unwrap();
+
                 println!(
                     "{}:{} {}",
-                    file_data.get(),
+                    file_data.name(),
                     file_line_index.line_id().line_number(),
                     file_line_data.get()
                 );
@@ -178,6 +181,13 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
 }
 
 fn read_range(file: &str, start: usize, end: usize) -> Result<Vec<u8>, std::io::Error> {
+    println!(
+        "Reading range {}-{} size: {} from file: {}",
+        start,
+        end,
+        end - start,
+        file
+    );
     let mut file = fs::File::open(file)?;
     let mut buffer = vec![0; end - start];
     file.seek(std::io::SeekFrom::Start(start as u64))?;
