@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     io::{self, BufRead, Read, Seek},
     time::Instant,
@@ -8,10 +9,11 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use igrep::{
     self,
-    index_builder::NgramIndex,
-    index_file::{self, FileData, FileLineData, FromToData, NgramData},
+    index_builder::{FileLineIndex, NgramIndex},
+    index_file::{self, FileData, FileLineData, FromToData, IndexData, NgramData},
     index_regex,
 };
+use regex::Regex;
 use regex_syntax::{
     hir::{Hir, HirKind, Literal},
     parse,
@@ -137,52 +139,56 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     idx_file.read_to_end(&mut idx_buf)?;
     let index_data = index_file::IndexData::from_data(idx_buf)?;
     index_data.show_info();
-    let ngram = NgramIndex::new(args.search_term.as_bytes());
-    let ngram_range = index_data.get_ngram_range(&ngram);
-    println!("Ngram range: {:?}", ngram_range);
-    if let Some(range) = ngram_range {
-        let file = format!("{}/igrep.dat", args.config);
-        let data = read_range(&file, range.0.start, range.0.start + range.0.len)?;
-        let ngram_data = NgramData::from_data(data)?;
-        println!("Ngram data: {:?}", &ngram_data);
-        ngram_data
-            .file_lines()
-            .into_iter()
-            .for_each(|file_line_index| {
-                let file_range = index_data
-                    .get_file_range(file_line_index.file_id())
-                    .unwrap();
 
-                let file_data = read_range(
-                    &format!("{}/igrep.dat", args.config),
-                    file_range.0.start,
-                    file_range.0.start + file_range.0.len,
-                )
-                .unwrap();
-                let file_data = FileData::from_data(file_data).unwrap();
-
-                let file_line_range = file_data.lines_range(file_line_index.line_id()).unwrap();
-                let file_line_data = read_range(
-                    &format!("{}/igrep.dat", args.config),
-                    file_line_range.0.start,
-                    file_line_range.0.start + file_line_range.0.len,
-                )
-                .unwrap();
-                let file_line_data = FileLineData::from_data(file_line_data).unwrap();
-
-                println!(
-                    "{}:{} {}",
-                    file_data.name(),
-                    file_line_index.line_id().line_number(),
-                    file_line_data.get()
-                );
-            });
-    }
     let engine = index_regex::Engine::new(args.search_term.as_str())?;
-    let tree= engine.ngram(3);
-    let simple_tree= tree.clone().simple();
+    let tree = engine.ngram(3);
+    let simple_tree = tree.is_all();
     println!("Ngram tree: {:?}", &tree);
-    println!("Ngram simple tree: {:?}", &simple_tree);
+    println!("Ngram is all: {:?}", &simple_tree);
+    let ngrams = tree.ngrams();
+    println!("Ngrams need get: {:?}", &ngrams);
+    for ngram in &ngrams {
+        let ngram_data = get_ngram_data(
+            format!("{}/igrep.dat", args.config).as_str(),
+            &index_data,
+            &ngram,
+        );
+        println!("{:?} -> {}", &ngram, ngram_data.file_lines().len());
+    }
+
+    let index = ngrams
+        .iter()
+        .map(|ngram| {
+            let ngram_data = get_ngram_data(
+                format!("{}/igrep.dat", args.config).as_str(),
+                &index_data,
+                &ngram,
+            );
+            (ngram.clone(), ngram_data)
+        })
+        .collect::<HashMap<_, _>>();
+    let result = tree.get_file_lines(&index);
+    // println!("file lines {:?}", &result);
+    match result {
+        index_regex::NgramTreeResult::ALL => println!("chat not longer then index"),
+        index_regex::NgramTreeResult::Set(sub) => {
+            let re = Regex::new(args.search_term.as_str()).unwrap();
+            sub.into_iter()
+                .map(|e| {
+                    let d = get_file_line_data(
+                        format!("{}/igrep.dat", args.config).as_str(),
+                        &index_data,
+                        &e,
+                    );
+                    (e, d)
+                })
+                .filter(|(i, d)| re.is_match(d.0.get()))
+                .for_each(|(i, d)| {
+                    println!("{}:{:?}{}", d.1, i.line_id().line_number(), d.0.get());
+                });
+        }
+    }
+
     let regex = parse(args.search_term.as_str())?;
     println!("Parsed regex: {:?}", regex);
 
@@ -190,16 +196,56 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
 }
 
 fn read_range(file: &str, start: usize, end: usize) -> Result<Vec<u8>, std::io::Error> {
-    println!(
-        "Reading range {}-{} size: {} from file: {}",
-        start,
-        end,
-        end - start,
-        file
-    );
+    // println!(
+    //     "Reading range {}-{} size: {} from file: {}",
+    //     start,
+    //     end,
+    //     end - start,
+    //     file
+    // );
     let mut file = fs::File::open(file)?;
     let mut buffer = vec![0; end - start];
     file.seek(std::io::SeekFrom::Start(start as u64))?;
     file.read_exact(&mut buffer)?;
     Ok(buffer)
 }
+
+fn get_ngram_data(file: &str, index_data: &IndexData, ngram_index: &NgramIndex) -> NgramData {
+    index_data
+        .get_ngram_range(ngram_index)
+        .and_then(|range| {
+            read_range(file, range.0.start, range.0.start + range.0.len)
+                .and_then(|data| NgramData::from_data(data))
+                .map_or(None, |d| Some(d))
+        })
+        .unwrap_or(NgramData::new())
+}
+
+fn get_file_line_data(
+    file: &str,
+    index_data: &IndexData,
+    file_line_index: &FileLineIndex,
+) -> (FileLineData, String) {
+    let file_range = index_data
+        .get_file_range(file_line_index.file_id())
+        .unwrap();
+
+    let file_data = read_range(
+        file,
+        file_range.0.start,
+        file_range.0.start + file_range.0.len,
+    )
+    .unwrap();
+    let file_data = FileData::from_data(file_data).unwrap();
+
+    let file_line_range = file_data.lines_range(file_line_index.line_id()).unwrap();
+    let file_line_data = read_range(
+        file,
+        file_line_range.0.start,
+        file_line_range.0.start + file_line_range.0.len,
+    )
+    .unwrap();
+    let file_line_data = FileLineData::from_data(file_line_data).unwrap();
+    (file_line_data, file_data.name().clone())
+}
+

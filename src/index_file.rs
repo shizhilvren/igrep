@@ -272,6 +272,9 @@ impl NgramData {
     pub fn file_lines(&self) -> &Vec<FileLineIndex> {
         &self.0
     }
+    pub fn new() -> Self {
+        Self(vec![])
+    }
 }
 
 impl FileLineData {
