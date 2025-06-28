@@ -1,6 +1,6 @@
 use bincode::{self, Decode, Encode};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     hash::Hash,
     io::{self, Error},
@@ -34,39 +34,36 @@ pub(crate) struct FileContent {
     lines: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord)]
 pub struct FileIndex {
     file_id: u32,
 }
 
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
 pub struct LineIndex {
     line: u32,
 }
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq)]
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
 pub struct FileLineIndex {
     file_id: FileIndex,
     line_id: LineIndex,
 }
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode)]
-pub enum NgramIndex {
-    Last(u8),
-    Char(Box<(u8, NgramIndex)>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode, PartialOrd, Ord)]
+pub struct NgramIndex {
+    ngram: Box<[u8]>,
 }
 
 impl NgramIndex {
     /// # Panics
     ///
     /// Panics if `n` size is zero.
-    pub fn from_str(s: &str, n: usize) -> Vec<NgramIndex> {
+    pub fn from_str(s: &str, n: usize) -> HashSet<NgramIndex> {
         s.as_bytes()
             .windows(n)
             .map(|ngram| NgramIndex::new(ngram))
             .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>()
     }
     /// # Panics
     ///
@@ -74,8 +71,9 @@ impl NgramIndex {
     pub fn new(ngram: &[u8]) -> Self {
         match ngram.len() {
             0 => panic!("Ngram cannot be empty"),
-            1 => NgramIndex::Last(ngram[0]),
-            _ => NgramIndex::Char(Box::new((ngram[0], NgramIndex::new(&ngram[1..])))),
+            _ => NgramIndex {
+                ngram: Box::from(ngram),
+            },
         }
     }
 }
@@ -127,7 +125,7 @@ impl IndexBuilder {
             .as_mut()
             .and_then(|idx| {
                 idx.index(file_index, file_content, n)
-                    .map_or(None, |e| Some(()))
+                    .map_or(None, |_| Some(()))
             })
             .ok_or({
                 Error::new(
@@ -258,28 +256,14 @@ mod tests {
     #[test]
     fn test_ngram_index_from_str() {
         let ngrams = NgramIndex::from_str("hello", 3);
+        let ngrams = ngrams.into_iter().collect::<HashSet<_>>();
         assert_eq!(ngrams.len(), 3);
-        assert_eq!(
-            ngrams[0],
-            NgramIndex::Char(Box::new((
-                b'h',
-                NgramIndex::Char(Box::new((b'e', NgramIndex::Last(b'l'))))
-            )))
-        );
-        assert_eq!(
-            ngrams[1],
-            NgramIndex::Char(Box::new((
-                b'e',
-                NgramIndex::Char(Box::new((b'l', NgramIndex::Last(b'l'))))
-            )))
-        );
-        assert_eq!(
-            ngrams[2],
-            NgramIndex::Char(Box::new((
-                b'l',
-                NgramIndex::Char(Box::new((b'l', NgramIndex::Last(b'o'))))
-            )))
-        );
+        let expected = HashSet::from([
+            NgramIndex::new("hel".as_bytes()),
+            NgramIndex::new("ell".as_bytes()),
+            NgramIndex::new("llo".as_bytes()),
+        ]);
+        assert_eq!(ngrams, expected);
     }
 
     #[test]
@@ -291,13 +275,7 @@ mod tests {
     #[test]
     fn test_ngram_index_new() {
         let ngram = NgramIndex::new(b"abc");
-        assert_eq!(
-            ngram,
-            NgramIndex::Char(Box::new((
-                b'a',
-                NgramIndex::Char(Box::new((b'b', NgramIndex::Last(b'c'))))
-            )))
-        );
+        assert_eq!(ngram, NgramIndex::new("abc".as_bytes()));
     }
 
     #[test]
