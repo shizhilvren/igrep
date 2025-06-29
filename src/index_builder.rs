@@ -5,6 +5,7 @@ use std::{
     hash::Hash,
     io::{self, Error},
 };
+use wasm_bindgen::prelude::*;
 
 use crate::index_file::Data;
 
@@ -34,15 +35,18 @@ pub(crate) struct FileContent {
     lines: Vec<String>,
 }
 
+#[wasm_bindgen]
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord)]
 pub struct FileIndex {
     file_id: u32,
 }
 
+#[wasm_bindgen]
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
 pub struct LineIndex {
     line: u32,
 }
+#[wasm_bindgen]
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
 pub struct FileLineIndex {
     file_id: FileIndex,
@@ -50,6 +54,7 @@ pub struct FileLineIndex {
 }
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
+#[wasm_bindgen]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode, PartialOrd, Ord)]
 pub struct NgramIndex {
     ngram: Box<[u8]>,

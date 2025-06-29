@@ -8,15 +8,18 @@ use regex_syntax::{
     hir::{Hir, HirKind, Literal},
     parse,
 };
+use wasm_bindgen::prelude::*;
 
 use crate::{
     index_builder::{FileLineIndex, NgramIndex},
     index_file::NgramData,
 };
 
+#[wasm_bindgen]
 pub struct Engine {
     regex: Hir,
 }
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum NgramTree {
     Empty,

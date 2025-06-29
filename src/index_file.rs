@@ -7,19 +7,25 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-#[derive(Debug, Decode, Encode)]
+#[wasm_bindgen]
+#[derive(Debug, Decode, Encode, Clone, Copy)]
 pub struct Range {
+    #[wasm_bindgen(readonly)]
     pub start: usize,
+    #[wasm_bindgen(readonly)]
     pub len: usize,
 }
 
-#[derive(Debug, Decode, Encode)]
+#[wasm_bindgen]
+#[derive(Debug, Decode, Encode, Clone)]
 pub struct FileLineRange(pub Range);
 
-#[derive(Debug, Decode, Encode)]
+#[wasm_bindgen]
+#[derive(Debug, Decode, Encode, Clone)]
 pub struct FileRange(pub Range);
 
-#[derive(Debug, Decode, Encode)]
+#[wasm_bindgen]
+#[derive(Debug, Decode, Encode, Clone, Copy)]
 pub struct NgramRange(pub Range);
 
 pub struct Data {
@@ -39,7 +45,7 @@ pub struct FileData {
 #[derive(Decode, Encode, Debug)]
 pub struct NgramData(Vec<FileLineIndex>);
 
-// #[wasm_bindgen]
+#[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct IndexData {
     id_to_file: HashMap<FileIndex, FileRange>,
@@ -205,6 +211,7 @@ impl Data {
     }
 }
 
+#[wasm_bindgen]
 impl IndexData {
     pub(crate) fn new() -> Self {
         IndexData {
@@ -213,12 +220,12 @@ impl IndexData {
         }
     }
 
-    pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<&NgramRange> {
-        self.ngram_to_file_line.get(ngram_index)
+    pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<NgramRange> {
+        self.ngram_to_file_line.get(ngram_index).cloned()
     }
 
-    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<&FileRange> {
-        self.id_to_file.get(file_index)
+    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<FileRange> {
+        self.id_to_file.get(file_index).cloned()
     }
 
     pub(crate) fn add_file(
@@ -304,6 +311,7 @@ impl FileData {
         self.lines_range.entry(line_index).or_insert(range);
     }
 }
+
 pub trait FromToData {
     fn from_data(data: Vec<u8>) -> Result<Self, io::Error>
     where

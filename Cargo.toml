@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 anyhow = "1.0.98"
 bincode = "2.0.1"
 clap = { version = "4.5.40", features = ["derive"] }
+js-sys = "0.3.77"
 regex = "1.11.1"
 regex-syntax = "0.8.5"
 wasm-bindgen = "0.2.100"
