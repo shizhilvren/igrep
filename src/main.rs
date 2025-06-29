@@ -141,7 +141,7 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     index_data.show_info();
 
     let engine = index_regex::Engine::new(args.search_term.as_str())?;
-    let tree = engine.ngram(3);
+    let tree = engine.ngram(4);
     let simple_tree = tree.is_all();
     println!("Ngram tree: {:?}", &tree);
     println!("Ngram is all: {:?}", &simple_tree);
