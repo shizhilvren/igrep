@@ -5,6 +5,7 @@ use std::{
     fs,
     io::{self, Write},
 };
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Decode, Encode)]
 pub struct Range {
@@ -38,6 +39,7 @@ pub struct FileData {
 #[derive(Decode, Encode, Debug)]
 pub struct NgramData(Vec<FileLineIndex>);
 
+// #[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct IndexData {
     id_to_file: HashMap<FileIndex, FileRange>,

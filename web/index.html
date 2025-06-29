@@ -47,6 +47,11 @@
 
     createApp(MyComponent).mount('#app')
     createApp(search).mount('#app2')
+
+    import init, { greet } from "./pkg/igrep.js";
+    init().then(() => {
+      greet("efgh");
+    })
   </script>
 </body>
 

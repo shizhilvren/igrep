@@ -1,18 +1,21 @@
+mod config;
+mod index_builder;
+mod index_file;
+mod index_regex;
+
 use std::{
     collections::HashMap,
     fs,
-    io::{self, BufRead, Read, Seek},
+    io::{BufRead, Read, Seek},
     time::Instant,
 };
 
+use crate::{
+    index_builder::{FileLineIndex, NgramIndex},
+    index_file::{FileData, FileLineData, FromToData, IndexData, NgramData},
+};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use igrep::{
-    self,
-    index_builder::{FileLineIndex, NgramIndex},
-    index_file::{self, FileData, FileLineData, FromToData, IndexData, NgramData},
-    index_regex,
-};
 use regex::Regex;
 use regex_syntax::{
     hir::{Hir, HirKind, Literal},
@@ -80,7 +83,7 @@ fn main() -> Result<()> {
 
 fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     // 创建索引构建器
-    let mut builder = igrep::index_builder::IndexBuilder::new(args.config)?;
+    let mut builder = crate::index_builder::IndexBuilder::new(args.config)?;
 
     // 读取文件列表
     let file_content = fs::read(args.file_list.clone())?;
@@ -248,4 +251,3 @@ fn get_file_line_data(
     let file_line_data = FileLineData::from_data(file_line_data).unwrap();
     (file_line_data, file_data.name().clone())
 }
-
