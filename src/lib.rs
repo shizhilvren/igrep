@@ -58,9 +58,8 @@ impl TreeNgramIndexRange {
     pub fn get_len(&self) -> usize {
         self.index_ranges.len()
     }
-    pub fn range_at(&self, idx: usize) -> *const NgramRange {
-        let range: *const NgramRange = &self.index_ranges.get(idx).unwrap().range;
-        range
+    pub fn range_at(&self, idx: usize) -> NgramRange {
+        self.index_ranges.get(idx).unwrap().range
     }
 }
 
