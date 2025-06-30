@@ -79,7 +79,7 @@ impl NgramTree {
 
     pub fn get_file_lines(
         &self,
-        ngram_to_data: &HashMap<NgramIndex, NgramData>,
+        ngram_to_data: &HashMap<NgramIndex, &NgramData>,
     ) -> NgramTreeResult {
         let ans = match self {
             Self::ALL => NgramTreeResult::ALL,

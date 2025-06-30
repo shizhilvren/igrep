@@ -2,9 +2,11 @@ pub mod config;
 pub mod index_builder;
 pub mod index_file;
 pub mod index_regex;
+use std::collections::{HashMap, HashSet};
+
 use crate::{
-    index_builder::NgramIndex,
-    index_file::{FromToData, IndexData, NgramRange},
+    index_builder::{FileLineIndex, NgramIndex},
+    index_file::{FromToData, IndexData, NgramData, NgramRange},
     index_regex::{Engine, NgramTree},
 };
 use js_sys::Array;
@@ -54,12 +56,53 @@ pub struct TreeNgramIndexRange {
 }
 
 #[wasm_bindgen]
+pub struct NgramTreeResult {
+    ans: index_regex::NgramTreeResult,
+}
+
+#[wasm_bindgen]
+impl NgramTreeResult {
+    pub fn len(&self) -> usize {
+        match &self.ans {
+            index_regex::NgramTreeResult::ALL => panic!(),
+            index_regex::NgramTreeResult::Set(set) => set.len(),
+        }
+    }
+    pub fn get(&self, idx: usize) -> FileLineIndex {
+        match &self.ans {
+            index_regex::NgramTreeResult::ALL => panic!(),
+            index_regex::NgramTreeResult::Set(set) => set.iter().nth(idx).unwrap().clone(),
+        }
+    }
+    pub fn all(&self) -> bool {
+        match self.ans {
+            index_regex::NgramTreeResult::ALL => true,
+            _ => false,
+        }
+    }
+}
+
+#[wasm_bindgen]
 impl TreeNgramIndexRange {
     pub fn get_len(&self) -> usize {
         self.index_ranges.len()
     }
     pub fn range_at(&self, idx: usize) -> NgramRange {
         self.index_ranges.get(idx).unwrap().range
+    }
+    pub fn set_data_at(&mut self, idx: usize, data: Vec<u8>) {
+        self.index_ranges.get_mut(idx).unwrap().data = NgramData::from_data(data).unwrap();
+    }
+
+    pub fn search(&self) -> NgramTreeResult {
+        let map = self
+            .index_ranges
+            .iter()
+            .map(|ird| (ird.index.clone(), &ird.data))
+            .collect::<HashMap<_, _>>();
+        NgramTreeResult {
+            ans: self.tree.get_file_lines(&map),
+        }
     }
 }
 
@@ -69,6 +112,8 @@ pub struct NgramIndexRange {
     index: NgramIndex,
     #[wasm_bindgen(skip)]
     pub range: NgramRange,
+    #[wasm_bindgen(skip)]
+    pub data: NgramData,
 }
 
 #[wasm_bindgen]
@@ -90,6 +135,7 @@ pub fn engine_build_tree(
                         Some(NgramIndexRange {
                             index: ngram_index.clone(),
                             range,
+                            data: NgramData::new(),
                         })
                     })
                 })

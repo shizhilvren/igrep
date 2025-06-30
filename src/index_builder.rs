@@ -36,21 +36,23 @@ pub(crate) struct FileContent {
 }
 
 #[wasm_bindgen]
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord, Copy)]
 pub struct FileIndex {
     file_id: u32,
 }
 
 #[wasm_bindgen]
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
 pub struct LineIndex {
     line: u32,
 }
 #[wasm_bindgen]
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
 pub struct FileLineIndex {
-    file_id: FileIndex,
-    line_id: LineIndex,
+    #[wasm_bindgen(readonly)]
+    pub file_id: FileIndex,
+    #[wasm_bindgen(readonly)]
+    pub line_id: LineIndex,
 }
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
@@ -221,6 +223,8 @@ impl FileLineIndex {
         &self.line_id
     }
 }
+
+#[wasm_bindgen]
 impl LineIndex {
     pub fn new(line: u32) -> Self {
         if line == 0 {

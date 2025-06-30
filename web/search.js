@@ -30,7 +30,7 @@ export default {
 }
 
 
-function search(msg) {
+async function search(msg) {
     console.log(`searching "${msg}!"`)
     let engine = index_regex_engine(msg)
     if (engine) {
@@ -43,11 +43,25 @@ function search(msg) {
             console.log("range " + i + start + " " + r[0].len)
             return fetchFileRange(data_file_path, start, end)
         });
-        Promise.all(p_array).then((data) => {
-            console.log("get ngram data finish")
-            console.log(data)
-        });
+        let data = await Promise.all(p_array)
+        console.log("get ngram data finish")
+        console.log(data)
+        for (let i = 0; i < data.length; i++) {
+            tree.set_data_at(i, data.at(i))
+        }
+        console.log("get ngram data finish")
         console.log("need get " + len + " ngram range")
+        let ngram_tree_result = tree.search()
+        if (ngram_tree_result.all()) {
+            alert("this regex samil then 3")
+        } else {
+            console.log("have " + ngram_tree_result.len() + "may result")
+            for (let i = 0; i < ngram_tree_result.len(); i++) {
+                let file_line_index = ngram_tree_result.get(i)
+                console.log("file index " + file_line_index.file_id + " line " + file_line_index.line_id.line_number())
+            }
+        }
+        console.log("file line search finish")
     } else {
         alert('"${msg}" is not a regex')
     }

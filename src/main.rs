@@ -170,7 +170,11 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
             (ngram.clone(), ngram_data)
         })
         .collect::<HashMap<_, _>>();
-    let result = tree.get_file_lines(&index);
+    let ref_index = index
+        .iter()
+        .map(|(ngram, data)| (ngram.clone(), data))
+        .collect::<HashMap<_, _>>();
+    let result = tree.get_file_lines(&ref_index);
     // println!("file lines {:?}", &result);
     match result {
         index_regex::NgramTreeResult::ALL => println!("chat not longer then index"),
