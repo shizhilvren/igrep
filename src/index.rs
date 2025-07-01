@@ -1,3 +1,4 @@
+use crate::data::FromToData;
 use bincode::{self, Decode, Encode};
 use std::{
     collections::{HashMap, HashSet},
@@ -6,7 +7,6 @@ use std::{
     io::{self, Error},
 };
 use wasm_bindgen::prelude::*;
-use crate::data::FromToData;
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
 #[wasm_bindgen]
@@ -35,14 +35,23 @@ pub struct FileLineIndex {
     pub line_id: LineIndex,
 }
 
+impl FileIndex {
+    pub fn new(id: u32) -> Self {
+        Self { file_id: id }
+    }
+}
 impl NgramIndex {
     /// # Panics
     ///
     /// Panics if `n` size is zero.
-    pub fn from_str(s: &[u8], n: u8) -> HashSet<NgramIndex> {
-        s.windows(n as usize)
+    pub fn from_str(s: &[u8], n: u8) -> Vec<NgramIndex> {
+        let mut ret = s
+            .windows(n as usize)
             .map(|ngram| NgramIndex::new(ngram))
-            .collect::<HashSet<_>>()
+            .collect::<Vec<_>>();
+        ret.sort();
+        ret.dedup();
+        ret
     }
     /// # Panics
     ///
@@ -70,7 +79,6 @@ impl LineIndex {
     }
 }
 
-
 impl FileLineIndex {
     pub fn new(file_id: FileIndex, line_id: LineIndex) -> Self {
         Self { file_id, line_id }
@@ -82,7 +90,6 @@ impl FileLineIndex {
         &self.line_id
     }
 }
-
 
 impl FromToData for NgramIndex {}
 impl FromToData for FileLineIndex {}
