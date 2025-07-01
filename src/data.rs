@@ -1,7 +1,11 @@
 use crate::index::{FileIndex, FileLineIndex, LineIndex, NgramIndex};
 use crate::range::{FileLineRange, FileRange, NgramRange, Range};
 use bincode::{self, Decode, Encode};
+use flate2::Compression;
+use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
+use flate2::write::{DeflateEncoder, ZlibEncoder};
 use std::io::Write;
+use std::io::prelude::*;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -138,24 +142,37 @@ pub trait FromToData {
     where
         Self: Decode<()>,
     {
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to decode index data: {}", e),
-                )
-            })
-            .map(|(index_data, _)| index_data)
+        let mut d = DeflateDecoder::new(data.as_slice());
+        let mut buffer = Vec::new();
+        match d.read_to_end(&mut buffer) {
+            Ok(_) => bincode::decode_from_slice(&buffer, bincode::config::standard())
+                .map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Failed to decode index data: {}", e),
+                    )
+                })
+                .map(|(index_data, _)| index_data),
+            Err(e) => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to decode index data: {}", e),
+            )),
+        }
     }
     fn to_data(&self) -> Result<Vec<u8>, io::Error>
     where
         Self: Encode,
     {
-        bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to encode index data: {}", e),
-            )
-        })
+        bincode::encode_to_vec(self, bincode::config::standard())
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to encode index data: {}", e),
+                )
+            })
+            .and_then(|data| {
+                let mut e = DeflateEncoder::new(Vec::new(), Compression::default());
+                e.write_all(data.as_slice()).and_then(|_| e.finish())
+            })
     }
 }
