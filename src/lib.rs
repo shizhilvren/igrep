@@ -39,7 +39,9 @@ extern "C" {
 
 #[wasm_bindgen]
 pub fn build_index_data(data: Vec<u8>) -> IndexData {
-    index_file::IndexData::from_data(data).unwrap()
+    let data = index_file::IndexData::from_data(data);
+    log(&format!("build index data with {:?} file lines", &data));
+    data.unwrap()
 }
 
 #[wasm_bindgen]
@@ -91,7 +93,15 @@ impl TreeNgramIndexRange {
         self.index_ranges.get(idx).unwrap().range
     }
     pub fn set_data_at(&mut self, idx: usize, data: Vec<u8>) {
-        self.index_ranges.get_mut(idx).unwrap().data = NgramData::from_data(data).unwrap();
+        let data = NgramData::from_data(data).unwrap();
+        log(&format!(
+            "set data at {} {:?} range {:?} {} file lines",
+            idx,
+            self.index_ranges.get(idx).unwrap().index,
+            self.index_ranges.get(idx).unwrap().range,
+            data.file_lines().len()
+        ));
+        self.index_ranges.get_mut(idx).unwrap().data = data;
     }
 
     pub fn search(&self) -> NgramTreeResult {
@@ -120,7 +130,7 @@ pub struct NgramIndexRange {
 pub fn engine_build_tree(
     engine: &Engine,
     index_data: &IndexData,
-    n: usize,
+    n: u8,
 ) -> Option<TreeNgramIndexRange> {
     let tree = engine.ngram(n);
     let all = tree.is_all();
@@ -132,6 +142,7 @@ pub fn engine_build_tree(
                 .iter()
                 .filter_map(|ngram_index| {
                     index_data.get_ngram_range(ngram_index).and_then(|range| {
+                        log(&format!("get ngram {:?} range {:?}", ngram_index, range));
                         Some(NgramIndexRange {
                             index: ngram_index.clone(),
                             range,

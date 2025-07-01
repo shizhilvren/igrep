@@ -11,10 +11,11 @@ use wasm_bindgen::prelude::*;
 #[derive(Debug, Decode, Encode, Clone, Copy)]
 pub struct Range {
     #[wasm_bindgen(readonly)]
-    pub start: usize,
+    pub start: Offset,
     #[wasm_bindgen(readonly)]
-    pub len: usize,
+    pub len: u32,
 }
+pub type Offset = u64;
 
 #[wasm_bindgen]
 #[derive(Debug, Decode, Encode, Clone)]
@@ -46,7 +47,7 @@ pub struct FileData {
 pub struct NgramData(Vec<FileLineIndex>);
 
 #[wasm_bindgen]
-#[derive(Decode, Encode)]
+#[derive(Decode, Encode,Debug)]
 pub struct IndexData {
     id_to_file: HashMap<FileIndex, FileRange>,
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
@@ -99,9 +100,9 @@ impl Data {
     pub fn dump(&mut self) -> Result<(), io::Error> {
         let mut index_data = IndexData::new();
         let mut output = fs::File::create("igrep.dat")?;
-        let offset = 0_usize;
+        let offset = 0_u64;
 
-        let offset = self.dump_file_lines(&mut index_data, &mut output, offset)?;
+        let offset = self.dump_file_lines( &mut output, offset)?;
         let offset = self.dump_id_to_file(&mut index_data, &mut output, offset)?;
         let _offset = self.dump_ngrams(&mut index_data, &mut output, offset)?;
 
@@ -126,8 +127,8 @@ impl Data {
         &self,
         index_data: &mut IndexData,
         output: &mut fs::File,
-        offset: usize,
-    ) -> Result<usize, io::Error> {
+        offset: Offset,
+    ) -> Result<Offset, io::Error> {
         self.file_paths
             .iter()
             .map(|(file_index, file_path_data)| {
@@ -139,10 +140,10 @@ impl Data {
             .into_iter()
             .try_fold(offset, |offset, (file_index, data)| {
                 let len = data.len();
-                let range = FileRange(Range::new(offset, len));
+                let range = FileRange(Range::new(offset, len as u32));
                 output.write_all(&data)?;
                 index_data.add_file(file_index.clone(), range).map_or_else(
-                    || Ok(len + offset),
+                    || Ok(len as u64 + offset),
                     |_| {
                         Err(io::Error::new(
                             io::ErrorKind::AlreadyExists,
@@ -155,10 +156,9 @@ impl Data {
 
     fn dump_file_lines(
         &mut self,
-        index_data: &mut IndexData,
         output: &mut fs::File,
-        offset: usize,
-    ) -> Result<usize, io::Error> {
+        offset: Offset,
+    ) -> Result<Offset, io::Error> {
         self.file_lines
             .iter()
             .map(|(file_line, file_data)| {
@@ -170,10 +170,10 @@ impl Data {
             .into_iter()
             .try_fold(offset, |offset, (file_line, data)| {
                 let len = data.len();
-                let range = FileLineRange(Range::new(offset, len));
+                let range = FileLineRange(Range::new(offset, len as u32));
                 output.write_all(&data)?;
                 self.insert_file_lines_range(&file_line, range);
-                Ok(len + offset)
+                Ok(len as u64 + offset)
             })
     }
 
@@ -181,8 +181,8 @@ impl Data {
         &self,
         index_data: &mut IndexData,
         output: &mut fs::File,
-        offset: usize,
-    ) -> Result<usize, io::Error> {
+        offset: Offset,
+    ) -> Result<Offset, io::Error> {
         self.ngrams
             .iter()
             .map(|(ngram_index, file_lines)| {
@@ -194,12 +194,12 @@ impl Data {
             .into_iter()
             .try_fold(offset, |offset, (ngram_index, data)| {
                 let len = data.len();
-                let range = NgramRange(Range::new(offset, len));
+                let range = NgramRange(Range::new(offset, len as u32));
                 output.write_all(&data)?;
                 index_data
                     .add_ngram(ngram_index.clone(), range)
                     .map_or_else(
-                        || Ok(len + offset),
+                        || Ok(len as u64 + offset),
                         |_| {
                             Err(io::Error::new(
                                 io::ErrorKind::AlreadyExists,
@@ -272,7 +272,7 @@ impl IndexData {
 }
 
 impl Range {
-    pub fn new(start: usize, len: usize) -> Self {
+    pub fn new(start: Offset, len: u32) -> Self {
         Range { start, len }
     }
 }

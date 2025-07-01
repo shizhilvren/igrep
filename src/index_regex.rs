@@ -117,12 +117,11 @@ impl Engine {
         Ok(Self { regex })
     }
 
-    pub fn ngram(&self, n: usize) -> NgramTree {
+    pub fn ngram(&self, n: u8) -> NgramTree {
         Self::ngram_from_hir(&self.regex, n)
     }
 
-    fn ngram_from_hir(hir: &Hir, n: usize) -> NgramTree {
-        let ngram_tree = NgramTree::Empty;
+    fn ngram_from_hir(hir: &Hir, n: u8) -> NgramTree {
         let kind = hir.kind();
         match kind {
             HirKind::Empty => NgramTree::ALL,

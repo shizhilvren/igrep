@@ -1,6 +1,6 @@
 use bincode::{self, Decode, Encode};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{ HashMap, HashSet},
     fs,
     hash::Hash,
     io::{self, Error},
@@ -66,8 +66,8 @@ impl NgramIndex {
     /// # Panics
     ///
     /// Panics if `n` size is zero.
-    pub fn from_str(s: &[u8], n: usize) -> HashSet<NgramIndex> {
-        s.windows(n)
+    pub fn from_str(s: &[u8], n: u8) -> HashSet<NgramIndex> {
+        s.windows(n as usize)
             .map(|ngram| NgramIndex::new(ngram))
             .collect::<HashSet<_>>()
     }
@@ -102,10 +102,10 @@ impl FileContent {
     }
 
     /// # panic
-    pub fn get_line(&self, line_number: usize) -> Option<&String> {
-        match line_number {
+    pub fn get_line(&self, line_number: LineIndex) -> Option<&String> {
+        match line_number.line_number() {
             0 => None, // Lines are 1-indexed
-            _ => self.lines.get(line_number - 1),
+            _ => self.lines.get(line_number.line_number().saturating_sub(1) as usize),
         }
     }
     pub fn get_name(&self) -> &AbsPath {
@@ -124,7 +124,7 @@ impl IndexBuilder {
     /// # panic
     /// Panic if the 'file' is already indexed.
     /// Panic if `n` is zero.
-    pub fn index(&mut self, file: String, n: usize) -> Result<(), Error> {
+    pub fn index(&mut self, file: String, n: u8) -> Result<(), Error> {
         let file_content = FileContent::new(file)?;
         let file_index = self.file_to_id.get_or_insert(file_content.get_name());
         self.index
@@ -167,7 +167,7 @@ impl Index {
         &mut self,
         file_id: &FileIndex,
         file_content: FileContent,
-        n: usize,
+        n: u8,
     ) -> Result<(), String> {
         let ans = self.id_to_file.insert(file_id.clone(), file_content);
         if ans.is_some() {
@@ -246,7 +246,7 @@ mod tests {
     fn test_index() {
         let mut index_builder = IndexBuilder::new("test".to_string()).unwrap();
         index_builder
-            .index("test/file".to_string(), 3_usize)
+            .index("test/file".to_string(), 3_u8)
             .unwrap();
         assert_eq!(
             index_builder
@@ -292,8 +292,8 @@ mod tests {
         assert!(file_content.is_ok());
         let content = file_content.unwrap();
         assert!(!content.lines().is_empty());
-        assert!(content.get_line(0).is_none());
-        assert!(content.get_line(1).is_some());
+        assert!(content.get_line(LineIndex::new(0)).is_none());
+        assert!(content.get_line(LineIndex::new(1)).is_some());
     }
 
     #[test]
@@ -301,7 +301,7 @@ mod tests {
         let file_content = FileContent::new("test/file".to_string());
         assert!(file_content.is_ok());
         let content = file_content.unwrap();
-        assert_eq!(content.get_line(2).unwrap(), "98765");
+        assert_eq!(content.get_line(LineIndex::new(2)).unwrap(), "98765");
     }
 
     #[test]

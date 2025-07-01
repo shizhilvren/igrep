@@ -12,14 +12,13 @@ use std::{
 
 use crate::{
     index_builder::{FileLineIndex, NgramIndex},
-    index_file::{FileData, FileLineData, FromToData, IndexData, NgramData},
+    index_file::{FileData, FileLineData, FromToData, IndexData, NgramData, Offset},
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use regex::Regex;
 use regex_syntax::{
-    hir::{Hir, HirKind, Literal},
-    parse,
+    ast::print, hir::{Hir, HirKind, Literal}, parse
 };
 
 /// Indexed grep tool
@@ -54,7 +53,7 @@ struct IndexArgs {
 
     /// Sets the size of n-gram
     #[arg(short, long, default_value_t = 3)]
-    ngram: usize,
+    ngram: u8,
 }
 
 #[derive(Parser)]
@@ -179,6 +178,7 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     match result {
         index_regex::NgramTreeResult::ALL => println!("chat not longer then index"),
         index_regex::NgramTreeResult::Set(sub) => {
+            println!("Found {} file lines matching the search term", sub.len());
             let re = Regex::new(args.search_term.as_str()).unwrap();
             sub.into_iter()
                 .map(|e| {
@@ -202,7 +202,7 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-fn read_range(file: &str, start: usize, end: usize) -> Result<Vec<u8>, std::io::Error> {
+fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io::Error> {
     // println!(
     //     "Reading range {}-{} size: {} from file: {}",
     //     start,
@@ -211,7 +211,7 @@ fn read_range(file: &str, start: usize, end: usize) -> Result<Vec<u8>, std::io::
     //     file
     // );
     let mut file = fs::File::open(file)?;
-    let mut buffer = vec![0; end - start];
+    let mut buffer = vec![0; (end - start) as usize];
     file.seek(std::io::SeekFrom::Start(start as u64))?;
     file.read_exact(&mut buffer)?;
     Ok(buffer)
@@ -221,7 +221,8 @@ fn get_ngram_data(file: &str, index_data: &IndexData, ngram_index: &NgramIndex) 
     index_data
         .get_ngram_range(ngram_index)
         .and_then(|range| {
-            read_range(file, range.0.start, range.0.start + range.0.len)
+            println!("get ngram {:?} range {:?}", &ngram_index, &range);
+            read_range(file, range.0.start, range.0.start + range.0.len as u64)
                 .and_then(|data| NgramData::from_data(data))
                 .map_or(None, |d| Some(d))
         })
@@ -240,7 +241,7 @@ fn get_file_line_data(
     let file_data = read_range(
         file,
         file_range.0.start,
-        file_range.0.start + file_range.0.len,
+        file_range.0.start + file_range.0.len as u64,
     )
     .unwrap();
     let file_data = FileData::from_data(file_data).unwrap();
@@ -249,7 +250,7 @@ fn get_file_line_data(
     let file_line_data = read_range(
         file,
         file_line_range.0.start,
-        file_line_range.0.start + file_line_range.0.len,
+        file_line_range.0.start + file_line_range.0.len as u64,
     )
     .unwrap();
     let file_line_data = FileLineData::from_data(file_line_data).unwrap();

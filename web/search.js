@@ -36,26 +36,30 @@ async function search(msg) {
     if (engine) {
         let tree = engine_build_tree(engine, igrep_index_data.value, 3)
         let len = tree.get_len();
+        console.log("need get " + len + " ngram range")
         let p_array = Array.from({ length: len }, (_, i) => {
             let r = tree.range_at(i);
-            let end = r[0].start + r[0].len - 1; // end is inclusive
+            let len = r[0].len; // len is inclusive
             let start = r[0].start; // start is inclusive
-            console.log("range " + i + start + " " + r[0].len)
-            return fetchFileRange(data_file_path, start, end)
+            console.log("range " + i + " " + start + " " + r[0].len)
+            return fetchFileRange(data_file_path, start, len)
         });
         let data = await Promise.all(p_array)
         console.log("get ngram data finish")
         console.log(data)
         for (let i = 0; i < data.length; i++) {
-            tree.set_data_at(i, data.at(i))
+            console.debug("set data at " + i + " start")
+            let v = data.at(i);
+            tree.set_data_at(i, v);
+            console.debug("set data at " + i + " finish ")
+
         }
         console.log("get ngram data finish")
-        console.log("need get " + len + " ngram range")
         let ngram_tree_result = tree.search()
         if (ngram_tree_result.all()) {
             alert("this regex samil then 3")
         } else {
-            console.log("have " + ngram_tree_result.len() + "may result")
+            console.log("have " + ngram_tree_result.len() + " may result")
             for (let i = 0; i < ngram_tree_result.len(); i++) {
                 let file_line_index = ngram_tree_result.get(i)
                 console.log("file index " + file_line_index.file_id + " line " + file_line_index.line_id.line_number())
@@ -69,8 +73,8 @@ async function search(msg) {
 
 async function rust_api_init() {
     let p2 = igrep_init();
-    let [index_file_data, _] = await Promise.all([p1, p2])
-    igrep_index_data.value = await load_index_data(index_file_data);
+    let [index_file_data, _] = await Promise.allSettled([p1, p2])
+    igrep_index_data.value = await load_index_data(index_file_data.value);
     init_finish.value = true;
     return
 }
@@ -104,18 +108,23 @@ async function fetchFileToUint8Array(url) {
 }
 
 /**
- * 从网络上读取文件的特定范围
+ * 从网络上读取文件的特定范围，支持u64大小的文件
  * @param {string} url - 文件的URL
- * @param {number} start - 起始字节位置（包含）
- * @param {number} end - 结束字节位置（包含）
+ * @param {number|BigInt} start - 起始字节位置（包含），支持u64大小的值
+ * @param {number|BigInt} len - 要读取的字节长度，支持u64大小的值
  * @returns {Promise<Uint8Array>} - 包含请求范围内数据的Uint8Array
  */
-async function fetchFileRange(url, start, end) {
+async function fetchFileRange(url, start, len) {
     try {
+        // 确保使用BigInt处理，以支持超过2^53-1的值
+        const startBig = BigInt(start);
+        const lenBig = BigInt(len);
+        const endBig = startBig + lenBig - 1n; // 计算结束位置
+        
         // 创建带有Range头的请求
         const headers = new Headers();
-        headers.append('Range', `bytes=${start}-${end}`);
-
+        headers.append('Range', `bytes=${startBig.toString()}-${endBig.toString()}`);
+        
         // 发起网络请求
         const response = await fetch(url, { headers });
 
@@ -132,6 +141,7 @@ async function fetchFileRange(url, start, end) {
         return new Uint8Array(arrayBuffer);
     } catch (error) {
         console.error('Error fetching file range:', error);
+        console.error(`Failed range request: ${url} from ${start} length ${len}`);
         throw error;
     }
 }
