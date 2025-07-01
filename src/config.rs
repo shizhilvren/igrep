@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::index_builder::{ IndexBuilder};
+use crate::builder::{ IndexBuilder};
 pub struct Config {
     path: String,
 }

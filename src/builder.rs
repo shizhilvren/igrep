@@ -1,23 +1,23 @@
+use crate::index::FileIndex;
 use bincode::{self, Decode, Encode};
 use std::{
-    collections::{ HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fs,
     hash::Hash,
     io::{self, Error},
 };
 use wasm_bindgen::prelude::*;
 
-use crate::index_file::Data;
+struct FileIndexBuilder {
+    file_to_id: HashMap<AbsPath, FileIndex>,
+}
+
+struct FileIndexFinalBuilder(FileIndexBuilder);
 
 pub struct IndexBuilder {
     pub(crate) path: AbsPath,
     index: Option<Index>,
-    file_to_id: FileIDBuilder,
-}
-
-#[derive(Default)]
-struct FileIDBuilder {
-    file_to_id: HashMap<AbsPath, FileIndex>,
+    file_to_id: FileIndexBuilder,
 }
 
 #[derive(Default)]
@@ -25,6 +25,7 @@ pub(crate) struct Index {
     pub(crate) id_to_file: HashMap<FileIndex, FileContent>,
     pub(crate) ngram_to_file_line: HashMap<NgramIndex, Vec<FileLineIndex>>,
 }
+
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct AbsPath {
     path: String,
@@ -33,55 +34,6 @@ pub struct AbsPath {
 pub(crate) struct FileContent {
     full_file_name: AbsPath,
     lines: Vec<String>,
-}
-
-#[wasm_bindgen]
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord, Copy)]
-pub struct FileIndex {
-    file_id: u32,
-}
-
-#[wasm_bindgen]
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
-pub struct LineIndex {
-    line: u32,
-}
-#[wasm_bindgen]
-#[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
-pub struct FileLineIndex {
-    #[wasm_bindgen(readonly)]
-    pub file_id: FileIndex,
-    #[wasm_bindgen(readonly)]
-    pub line_id: LineIndex,
-}
-
-/// This is NgramIndex, which is used to represent the index of n-grams in a file.
-#[wasm_bindgen]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode, PartialOrd, Ord)]
-pub struct NgramIndex {
-    ngram: Box<[u8]>,
-}
-
-impl NgramIndex {
-    /// # Panics
-    ///
-    /// Panics if `n` size is zero.
-    pub fn from_str(s: &[u8], n: u8) -> HashSet<NgramIndex> {
-        s.windows(n as usize)
-            .map(|ngram| NgramIndex::new(ngram))
-            .collect::<HashSet<_>>()
-    }
-    /// # Panics
-    ///
-    /// Panics if `ngram` size is zero.
-    pub fn new(ngram: &[u8]) -> Self {
-        match ngram.len() {
-            0 => panic!("Ngram cannot be empty"),
-            _ => NgramIndex {
-                ngram: Box::from(ngram),
-            },
-        }
-    }
 }
 
 impl FileContent {
@@ -105,7 +57,9 @@ impl FileContent {
     pub fn get_line(&self, line_number: LineIndex) -> Option<&String> {
         match line_number.line_number() {
             0 => None, // Lines are 1-indexed
-            _ => self.lines.get(line_number.line_number().saturating_sub(1) as usize),
+            _ => self
+                .lines
+                .get(line_number.line_number().saturating_sub(1) as usize),
         }
     }
     pub fn get_name(&self) -> &AbsPath {
@@ -204,38 +158,29 @@ impl Index {
     }
 }
 
-impl FileIDBuilder {
-    fn get_or_insert(&mut self, path: &AbsPath) -> &FileIndex {
+impl FileIndexBuilder {
+    pub fn new() -> Self {
+        Self {
+            file_to_id: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, path: &AbsPath) -> Result<&FileIndex, io::Error> {
         let new_id = self.file_to_id.len() as u32;
         self.file_to_id
-            .entry(path.clone())
-            .or_insert_with(|| FileIndex { file_id: new_id })
+            .try_insert(path.clone(), FileIndex::new(new_id))
+            .map_err(|_| {
+                Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("File with path {} is already indexed", path.path()),
+                )
+            })
     }
-}
-impl FileLineIndex {
-    pub fn new(file_id: FileIndex, line_id: LineIndex) -> Self {
-        Self { file_id, line_id }
-    }
-    pub fn file_id(&self) -> &FileIndex {
-        &self.file_id
-    }
-    pub fn line_id(&self) -> &LineIndex {
-        &self.line_id
+    pub fn make_final(self) -> FileIndexFinalBuilder {
+        FileIndexFinalBuilder(self)
     }
 }
 
-#[wasm_bindgen]
-impl LineIndex {
-    pub fn new(line: u32) -> Self {
-        if line == 0 {
-            panic!("Line index cannot be zero");
-        }
-        Self { line }
-    }
-    pub fn line_number(&self) -> u32 {
-        self.line
-    }
-}
 #[cfg(test)]
 mod tests {
     use std::{env, path::PathBuf};
@@ -245,9 +190,7 @@ mod tests {
     #[test]
     fn test_index() {
         let mut index_builder = IndexBuilder::new("test".to_string()).unwrap();
-        index_builder
-            .index("test/file".to_string(), 3_u8)
-            .unwrap();
+        index_builder.index("test/file".to_string(), 3_u8).unwrap();
         assert_eq!(
             index_builder
                 .index

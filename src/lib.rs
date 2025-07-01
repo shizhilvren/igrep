@@ -1,11 +1,17 @@
 pub mod config;
-pub mod index_builder;
+pub mod builder;
 pub mod index_file;
 pub mod index_regex;
+pub mod index;
+pub mod range;
+pub mod data;
+pub mod encode;
+pub mod decode;
+
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    index_builder::{FileLineIndex, NgramIndex},
+    builder::{FileLineIndex, NgramIndex},
     index_file::{FromToData, IndexData, NgramData, NgramRange},
     index_regex::{Engine, NgramTree},
 };

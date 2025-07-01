@@ -11,7 +11,7 @@ use regex_syntax::{
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    index_builder::{FileLineIndex, NgramIndex},
+    builder::{FileLineIndex, NgramIndex},
     index_file::NgramData,
 };
 

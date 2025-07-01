@@ -1,4 +1,4 @@
-use crate::index_builder::{FileContent, FileIndex, FileLineIndex, Index, LineIndex, NgramIndex};
+use crate::builder::{FileContent, FileIndex, FileLineIndex, Index, LineIndex, NgramIndex};
 use bincode::{self, Decode, Encode};
 use std::{
     collections::HashMap,
@@ -7,51 +7,7 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-#[derive(Debug, Decode, Encode, Clone, Copy)]
-pub struct Range {
-    #[wasm_bindgen(readonly)]
-    pub start: Offset,
-    #[wasm_bindgen(readonly)]
-    pub len: u32,
-}
-pub type Offset = u64;
 
-#[wasm_bindgen]
-#[derive(Debug, Decode, Encode, Clone)]
-pub struct FileLineRange(pub Range);
-
-#[wasm_bindgen]
-#[derive(Debug, Decode, Encode, Clone)]
-pub struct FileRange(pub Range);
-
-#[wasm_bindgen]
-#[derive(Debug, Decode, Encode, Clone, Copy)]
-pub struct NgramRange(pub Range);
-
-pub struct Data {
-    file_lines: Vec<(FileLineIndex, FileLineData)>,
-    file_paths: HashMap<FileIndex, FileData>,
-    ngrams: Vec<(NgramIndex, NgramData)>,
-}
-#[derive(Decode, Encode)]
-pub struct FileLineData(String);
-
-#[derive(Decode, Encode)]
-pub struct FileData {
-    name: String,
-    lines_range: HashMap<LineIndex, FileLineRange>,
-}
-
-#[derive(Decode, Encode, Debug)]
-pub struct NgramData(Vec<FileLineIndex>);
-
-#[wasm_bindgen]
-#[derive(Decode, Encode,Debug)]
-pub struct IndexData {
-    id_to_file: HashMap<FileIndex, FileRange>,
-    ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
-}
 
 impl Data {
     pub(crate) fn new(index: Index) -> Data {
@@ -271,84 +227,10 @@ impl IndexData {
     }
 }
 
-impl Range {
-    pub fn new(start: Offset, len: u32) -> Self {
-        Range { start, len }
-    }
-}
 
-impl NgramData {
-    pub fn file_lines(&self) -> &Vec<FileLineIndex> {
-        &self.0
-    }
-    pub fn new() -> Self {
-        Self(vec![])
-    }
-}
-
-impl FileLineData {
-    pub fn get(&self) -> &String {
-        &self.0
-    }
-}
-
-impl FileData {
-    pub fn new(name: String) -> Self {
-        FileData {
-            name,
-            lines_range: HashMap::new(),
-        }
-    }
-    pub fn name(&self) -> &String {
-        &self.name
-    }
-    pub fn lines_range(&self, line_index: &LineIndex) -> Option<&FileLineRange> {
-        self.lines_range.get(line_index)
-    }
-
-    pub fn insert_line_range(&mut self, line_index: LineIndex, range: FileLineRange) {
-        assert!(!self.lines_range.contains_key(&line_index));
-        self.lines_range.entry(line_index).or_insert(range);
-    }
-}
-
-pub trait FromToData {
-    fn from_data(data: Vec<u8>) -> Result<Self, io::Error>
-    where
-        Self: Decode<()>,
-    {
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to decode index data: {}", e),
-                )
-            })
-            .map(|(index_data, _)| index_data)
-    }
-    fn to_data(&self) -> Result<Vec<u8>, io::Error>
-    where
-        Self: Encode,
-    {
-        bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to encode index data: {}", e),
-            )
-        })
-    }
-}
 
 impl FromToData for IndexData {}
 
-impl FromToData for NgramData {}
-impl FromToData for NgramRange {}
-impl FromToData for NgramIndex {}
 
-impl FromToData for FileLineData {}
-impl FromToData for FileLineRange {}
-impl FromToData for FileLineIndex {}
 
-impl FromToData for FileIndex {}
-impl FromToData for FileRange {}
-impl FromToData for FileData {}
+
