@@ -9,15 +9,26 @@ pub mod index_regex;
 pub mod range;
 pub mod search;
 
-// use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
-// use crate::{
-//     builder::{FileLineIndex, NgramIndex},
-//     index_file::{FromToData, IndexData, NgramData, NgramRange},
-//     index_regex::{Engine, NgramTree},
-// };
-// use js_sys::Array;
-// use wasm_bindgen::prelude::*;
+use js_sys::Array;
+use wasm_bindgen::prelude::*;
+
+use crate::{range::{NgramRange, Range}, search::Engine};
+
+#[wasm_bindgen]
+pub struct A {
+    pub a: u8,
+    pub b: NgramRange,
+}
+
+#[wasm_bindgen]
+pub fn fun() -> Vec<A> {
+    vec![A {
+        a: 1,
+        b: NgramRange(Range::new(1, 10)),
+    }]
+}
 
 // #[cfg(test)]
 // mod tests {

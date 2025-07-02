@@ -1,18 +1,4 @@
 
-// #[wasm_bindgen]
-// pub struct Engine {
-//     regex: Hir,
-// }
-
-// #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-// pub enum NgramTree {
-//     Empty,
-//     ALL,
-//     Gram(NgramIndex),
-//     Concat(Vec<NgramTree>),
-//     Alternation(Vec<NgramTree>),
-// }
-
 // #[derive(Debug)]
 // pub enum NgramTreeResult {
 //     ALL,
@@ -41,25 +27,8 @@
 // }
 
 // impl NgramTree {
-//     pub fn is_all(&self) -> bool {
-//         match self {
-//             Self::ALL => true,
-//             Self::Empty => false,
-//             Self::Gram(_) => false,
-//             Self::Alternation(sub) => sub.iter().any(|ngram_tree| ngram_tree.is_all()),
-//             Self::Concat(sub) => sub.iter().all(|t| t.is_all()),
-//         }
-//     }
-//     pub fn ngrams(&self) -> HashSet<NgramIndex> {
-//         match self {
-//             Self::ALL => HashSet::new(),
-//             Self::Empty => HashSet::new(),
-//             Self::Gram(e) => vec![e.clone()].into_iter().collect::<HashSet<_>>(),
-//             Self::Alternation(sub) | Self::Concat(sub) => {
-//                 sub.iter().map(|t| t.ngrams()).flatten().collect()
-//             }
-//         }
-//     }
+
+
 
 //     pub fn get_file_lines(
 //         &self,
@@ -102,56 +71,7 @@
 //         Self::ngram_from_hir(&self.regex, n)
 //     }
 
-//     fn ngram_from_hir(hir: &Hir, n: u8) -> NgramTree {
-//         let kind = hir.kind();
-//         match kind {
-//             HirKind::Empty => NgramTree::ALL,
-//             HirKind::Literal(lit) => {
-//                 let mut sub_tree = NgramIndex::from_str(lit.0.as_ref(), n)
-//                     .into_iter()
-//                     .map(|ngram| NgramTree::Gram(ngram))
-//                     .collect::<Vec<_>>();
-//                 let len = sub_tree.len();
-//                 match len {
-//                     0 => NgramTree::ALL,
-//                     1 => sub_tree.into_iter().nth(0).unwrap(),
-//                     _ => NgramTree::Concat(sub_tree),
-//                 }
-//             }
-//             HirKind::Class(_) => NgramTree::ALL,
-//             HirKind::Look(_) => NgramTree::ALL,
-//             HirKind::Repetition(r) => match r.sub.kind() {
-//                 HirKind::Literal(lit) => {
-//                     let lit = lit.0.as_ref();
-//                     let lit = std::iter::repeat_n(lit, r.min as usize)
-//                         .flatten()
-//                         .cloned()
-//                         .collect::<Vec<_>>();
-//                     let sub_tree = NgramIndex::from_str(lit.as_slice(), n)
-//                         .into_iter()
-//                         .map(|ngram| NgramTree::Gram(ngram))
-//                         .collect::<Vec<_>>();
-//                     NgramTree::Concat(sub_tree)
-//                 }
-//                 _ => NgramTree::ALL,
-//             },
-//             HirKind::Capture(c) => Engine::ngram_from_hir(c.sub.as_ref(), n),
-//             HirKind::Concat(hirs) => {
-//                 let sub_tree = hirs
-//                     .iter()
-//                     .map(|hir| Engine::ngram_from_hir(hir, n))
-//                     .collect::<Vec<_>>();
-//                 NgramTree::Concat(sub_tree)
-//             }
-//             HirKind::Alternation(hirs) => {
-//                 let sub_tree = hirs
-//                     .iter()
-//                     .map(|hir| Engine::ngram_from_hir(hir, n))
-//                     .collect::<Vec<_>>();
-//                 NgramTree::Alternation(sub_tree)
-//             }
-//         }
-//     }
+
 // }
 
 // #[cfg(test)]

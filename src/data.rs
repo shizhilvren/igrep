@@ -99,6 +99,9 @@ impl IndexData {
             ngram_to_file_line: HashMap::new(),
         }
     }
+    pub fn ngram_len(&self) -> u8 {
+        self.ngram_len
+    }
 
     pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<NgramRange> {
         self.ngram_to_file_line.get(ngram_index).cloned()
