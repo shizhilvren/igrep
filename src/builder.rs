@@ -8,6 +8,8 @@ use std::{
     hash::Hash,
     io::{self, Error},
 };
+use rayon::prelude::*;
+
 
 pub struct FileIndexBuilder {
     file_to_id: HashMap<AbsPath, FileIndex>,
@@ -15,9 +17,9 @@ pub struct FileIndexBuilder {
 
 pub struct FileIndexFinalBuilder(FileIndexBuilder);
 
-pub struct Buuilder {}
+pub struct Builder {}
 
-impl Buuilder {
+impl Builder {
     pub fn index(
         file_index_builder: &FileIndexFinalBuilder,
         file_content: FileContent,
@@ -45,16 +47,16 @@ impl Buuilder {
         file_ngrams: Vec<(FileIndex, FileContent, HashMap<NgramIndex, Vec<LineIndex>>)>,
     ) -> encode::Encode {
         let (fid_to_content, ngram_fid_lid): (Vec<_>, Vec<_>) = file_ngrams
-            .into_iter()
+            .into_par_iter()
             .map(|(fid, file_content, ngrams)| {
                 (
                     (fid, file_content),
                     ngrams
-                        .into_iter()
+                        .into_par_iter()
                         .map(|(ngram, lids)| {
                             (
                                 ngram,
-                                lids.into_iter()
+                                lids.into_par_iter()
                                     .map(|lid| FileLineIndex::new(fid, lid))
                                     .collect::<Vec<_>>(),
                             )

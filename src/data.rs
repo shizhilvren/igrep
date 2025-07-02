@@ -6,12 +6,14 @@ use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
 use flate2::write::{DeflateEncoder, ZlibEncoder};
 use std::io::Write;
 use std::io::prelude::*;
+use std::path::Path;
 use std::{
     collections::{HashMap, HashSet},
     fs,
     hash::Hash,
     io::{self, Error},
 };
+use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -96,7 +98,7 @@ impl IndexData {
         }
     }
 
-    pub(crate) fn dump(&self,path: &path::Path) -> Result<(), io::Error> {
+    pub(crate) fn dump(&self,path: &Path) -> Result<(), io::Error> {
         let mut output = fs::File::create(path.join("igrep.idx"))?;
         let encoded = bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
             io::Error::new(

@@ -5,21 +5,24 @@ mod encode;
 mod index;
 mod range;
 
-use std::{
-    fs::{self, File}, io::{BufRead, Read, Seek}, path::Path, time::Instant
-};
-
 use crate::{
-    builder::{AbsPath, Buuilder, FileContent, FileIndexBuilder},
+    builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use rayon::prelude::*;
 use regex::Regex;
 use regex_syntax::{
     ast::print,
     hir::{Hir, HirKind, Literal},
     parse,
+};
+use std::{
+    fs::{self, File},
+    io::{BufRead, Read, Seek},
+    path::Path,
+    time::Instant,
 };
 
 /// Indexed grep tool
@@ -97,29 +100,36 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     let mut fid_builder = FileIndexBuilder::new();
 
     let file_lines = file_lines
-        .iter()
+        .into_par_iter()
         .filter_map(|file_name| {
-            let path = AbsPath::new((*file_name).clone());
+            let path = AbsPath::new(file_name.clone());
             match path {
-                Ok(path) => fid_builder.insert(&path).map_or_else(
-                    |e| {
-                        println!("{} {:?} ", file_name, e);
-                        None
-                    },
-                    |_| Some(path),
-                ),
+                Ok(path) => Some(path),
                 Err(e) => {
                     println!("{} {:?} ", file_name, e);
                     None
                 }
             }
         })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|path| {
+            fid_builder.insert(&path).map_or_else(
+                |e| {
+                    println!("{} {:?} ", path.path(), e);
+                    None
+                },
+                |_| Some(path.clone()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let file_lines = file_lines
+        .into_par_iter()
         .filter_map(|file| {
             let path = file.path().to_string();
             fs::read_to_string(&path).map_or_else(
                 |e| {
                     println!("{:?} {:?} ", &path, e);
-
                     None
                 },
                 |lines| {
@@ -139,16 +149,14 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     println!("all file read done");
     let fid_builder = fid_builder.make_final();
     let merges = file_lines
-        .into_iter()
+        .into_par_iter()
         .enumerate()
         .filter_map(|(id, file_content)| {
             let file_name = file_content.get_name().path().to_string();
-
             // 显示进度
             if verbose {
                 print!("Indexing file {}/{}: {}", id + 1, total_files, &file_name);
             }
-
             // 记录开始时间
             let start_time = Instant::now();
             let ans = Builder::index(&fid_builder, file_content, args.ngram);
@@ -163,8 +171,11 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
             ans
         })
         .collect::<Vec<_>>();
-    let mut encode_data = Buuilder::merge(merges);
+    println!("Indexing completed, merging data...");
+    let mut encode_data = Builder::merge(merges);
+    println!("Merging completed, dumping data...");
     encode_data.dump(Path::new(&args.config))?;
+    println!("Indexing and merging completed successfully.");
 
     Ok(())
 }

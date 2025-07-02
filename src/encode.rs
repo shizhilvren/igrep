@@ -3,6 +3,7 @@ use crate::data::{FileData, FileLineData, FromToData, IndexData, NgramData};
 use crate::index::{FileIndex, FileLineIndex, LineIndex, NgramIndex};
 use crate::range::{FileLineRange, FileRange, NgramRange, Range};
 use bincode::{self, Decode as bincode_decode, Encode as bincode_encode};
+use rayon::iter::*;
 use std::io::Write;
 use std::path;
 use std::{
@@ -115,7 +116,7 @@ impl Encode {
         offset: Offset,
     ) -> Result<Offset, io::Error> {
         self.file_paths
-            .iter()
+            .par_iter()
             .map(|(file_index, file_path_data)| {
                 file_path_data
                     .to_data()
@@ -145,7 +146,7 @@ impl Encode {
         offset: Offset,
     ) -> Result<Offset, io::Error> {
         self.file_lines
-            .iter()
+            .par_iter()
             .map(|(file_line, file_data)| {
                 file_data
                     .to_data()
@@ -169,7 +170,7 @@ impl Encode {
         offset: Offset,
     ) -> Result<Offset, io::Error> {
         self.ngrams
-            .iter()
+            .par_iter()
             .map(|(ngram_index, file_lines)| {
                 file_lines
                     .to_data()
