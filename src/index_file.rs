@@ -15,24 +15,9 @@
 
 
 
-//     pub fn show_info(&self) {
-//         println!("Index contains:");
-//         println!(
-//             "  {} files {}",
-//             self.id_to_file.len(),
-//             std::mem::size_of::<FileRange>()
-//         );
-//         println!(
-//             "  {} ngrams {}",
-//             self.ngram_to_file_line.len(),
-//             std::mem::size_of::<NgramRange>()
-//         );
-//     }
-// }
 
 
 
-// impl FromToData for IndexData {}
 
 
 

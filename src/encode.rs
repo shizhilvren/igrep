@@ -18,6 +18,7 @@ pub struct Encode {
     file_lines: Vec<(FileLineIndex, FileLineData)>,
     file_paths: HashMap<FileIndex, FileData>,
     ngrams: Vec<(NgramIndex, NgramData)>,
+    ngrams_len: u8,
 }
 
 struct EncodeHelp {
@@ -69,6 +70,7 @@ impl Encode {
     pub(crate) fn new(
         fid_to_file: Vec<(FileIndex, FileContent)>,
         ngram_to_file_line: HashMap<NgramIndex, Vec<FileLineIndex>>,
+        ngrams_len: u8,
     ) -> Self {
         let encode_help = EncodeHelp {
             fid_to_file,
@@ -79,11 +81,12 @@ impl Encode {
             file_paths: encode_help.file_paths(),
             file_lines: encode_help.file_lines(),
             ngrams: encode_help.ngrams(),
+            ngrams_len,
         }
     }
 
     pub fn dump(&mut self, path: &path::Path) -> Result<(), io::Error> {
-        let mut index_data = IndexData::new();
+        let mut index_data = IndexData::new(self.ngrams_len);
         let igrep_data = path.join("igrep.dat");
         let mut output = fs::File::create(igrep_data)?;
         let offset = 0_u64;
@@ -92,7 +95,8 @@ impl Encode {
         let offset = self.dump_id_to_file(&mut index_data, &mut output, offset)?;
         let _offset = self.dump_ngrams(&mut index_data, &mut output, offset)?;
 
-        index_data.dump(path)?;
+        let mut igrep_index = fs::File::create(path.join("igrep.idx"))?;
+        igrep_index.write_all(index_data.to_data()?.as_slice())?;
         Ok(())
     }
 

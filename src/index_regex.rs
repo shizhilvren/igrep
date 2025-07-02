@@ -1,19 +1,3 @@
-// use std::{
-//     collections::{HashMap, HashSet},
-//     io::Read,
-//     result,
-// };
-
-// use regex_syntax::{
-//     hir::{Hir, HirKind, Literal},
-//     parse,
-// };
-// use wasm_bindgen::prelude::*;
-
-// use crate::{
-//     builder::{FileLineIndex, NgramIndex},
-//     index_file::NgramData,
-// };
 
 // #[wasm_bindgen]
 // pub struct Engine {
@@ -112,10 +96,7 @@
 // }
 
 // impl Engine {
-//     pub fn new(pattern: &str) -> Result<Self, regex_syntax::Error> {
-//         let regex = parse(pattern)?;
-//         Ok(Self { regex })
-//     }
+
 
 //     pub fn ngram(&self, n: u8) -> NgramTree {
 //         Self::ngram_from_hir(&self.regex, n)

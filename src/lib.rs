@@ -7,6 +7,7 @@ pub mod index;
 pub mod index_file;
 pub mod index_regex;
 pub mod range;
+pub mod search;
 
 // use std::collections::{HashMap, HashSet};
 

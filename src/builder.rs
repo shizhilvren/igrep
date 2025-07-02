@@ -2,14 +2,13 @@ use crate::{
     encode,
     index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
 };
+use rayon::prelude::*;
 use std::{
     collections::HashMap,
     fs::{self},
     hash::Hash,
     io::{self, Error},
 };
-use rayon::prelude::*;
-
 
 pub struct FileIndexBuilder {
     file_to_id: HashMap<AbsPath, FileIndex>,
@@ -17,13 +16,30 @@ pub struct FileIndexBuilder {
 
 pub struct FileIndexFinalBuilder(FileIndexBuilder);
 
-pub struct Builder {}
+pub struct Builder {
+    ngram_len: u8,
+}
 
 impl Builder {
+    pub fn new(ngram_len: u8) -> Result<Self, Error> {
+        if ngram_len < 3 {
+            return Err(Error::new(
+                io::ErrorKind::InvalidInput,
+                "Ngram length cannot be less than 3",
+            ));
+        } else if ngram_len > 255 {
+            return Err(Error::new(
+                io::ErrorKind::InvalidInput,
+                "Ngram length cannot be greater than 255",
+            ));
+        } else {
+            Ok(Self { ngram_len })
+        }
+    }
     pub fn index(
+        &self,
         file_index_builder: &FileIndexFinalBuilder,
         file_content: FileContent,
-        ngram_len: u8,
     ) -> Option<(FileIndex, FileContent, HashMap<NgramIndex, Vec<LineIndex>>)> {
         let mut ngram_to_file_line: HashMap<NgramIndex, Vec<LineIndex>> = HashMap::new();
         let name = file_content.get_name();
@@ -31,7 +47,7 @@ impl Builder {
             file_content
                 .lines()
                 .iter()
-                .map(|line| NgramIndex::from_str(line.as_bytes(), ngram_len))
+                .map(|line| NgramIndex::from_str(line.as_bytes(), self.ngram_len))
                 .enumerate()
                 .map(|(id, ngrams)| (LineIndex::new((id + 1) as u32), ngrams))
                 .for_each(|(lid, ngrams)| {
@@ -44,6 +60,7 @@ impl Builder {
     }
     /// please make sure FileIndex not have same one
     pub fn merge(
+        &self,
         file_ngrams: Vec<(FileIndex, FileContent, HashMap<NgramIndex, Vec<LineIndex>>)>,
     ) -> encode::Encode {
         let (fid_to_content, ngram_fid_lid): (Vec<_>, Vec<_>) = file_ngrams
@@ -78,7 +95,7 @@ impl Builder {
                         .push(fid_lid);
                 });
             });
-        encode::Encode::new(fid_to_content, ngram_to_fid_lid)
+        encode::Encode::new(fid_to_content, ngram_to_fid_lid, self.ngram_len)
     }
 }
 

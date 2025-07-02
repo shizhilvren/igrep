@@ -13,4 +13,14 @@ use std::{
 use wasm_bindgen::prelude::*;
 
 
+#[wasm_bindgen]
+pub struct Engine {
+    regex: Hir,
+}
 
+impl Engine {
+    pub fn new(pattern: &str) -> Result<Self, regex_syntax::Error> {
+        let regex = parse(pattern)?;
+        Ok(Self { regex })
+    }
+}

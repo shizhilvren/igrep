@@ -7,6 +7,7 @@ mod range;
 
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
+    data::{FromToData, IndexData},
     index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
 };
 use anyhow::Result;
@@ -148,6 +149,7 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     let total_files = file_lines.len();
     println!("all file read done");
     let fid_builder = fid_builder.make_final();
+    let builder = Builder::new(args.ngram)?;
     let merges = file_lines
         .into_par_iter()
         .enumerate()
@@ -159,7 +161,7 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
             }
             // 记录开始时间
             let start_time = Instant::now();
-            let ans = Builder::index(&fid_builder, file_content, args.ngram);
+            let ans = builder.index(&fid_builder, file_content);
             // 计算并打印索引时间
             let duration = start_time.elapsed();
 
@@ -172,7 +174,7 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
         })
         .collect::<Vec<_>>();
     println!("Indexing completed, merging data...");
-    let mut encode_data = Builder::merge(merges);
+    let mut encode_data = builder.merge(merges);
     println!("Merging completed, dumping data...");
     encode_data.dump(Path::new(&args.config))?;
     println!("Indexing and merging completed successfully.");
@@ -181,22 +183,20 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
 }
 
 fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
-    // if verbose {
-    //     println!("Searching for '{}' in indexed files...", args.search_term);
-    // }
+    println!("Using config directory: {}", args.config);
+    println!("Search term: {}", args.search_term);
 
-    // // 现在索引搜索功能还没有实现，所以这里仅添加基础结构
-    // println!("Using config directory: {}", args.config);
-    // println!("Search term: {}", args.search_term);
-
-    // let mut idx_file = fs::OpenOptions::new()
-    //     .read(true)
-    //     .write(false)
-    //     .open(format!("{}/igrep.idx", args.config))?;
-    // let mut idx_buf = Vec::new();
-    // idx_file.read_to_end(&mut idx_buf)?;
-    // let index_data = index_file::IndexData::from_data(idx_buf)?;
-    // index_data.show_info();
+    let mut idx_file = fs::OpenOptions::new()
+        .read(true)
+        .write(false)
+        .open(format!("{}/igrep.idx", args.config))?;
+    let mut idx_buf = Vec::new();
+    idx_file.read_to_end(&mut idx_buf)?;
+    let index_data = IndexData::from_data(idx_buf)?;
+    if verbose {
+        println!("Index data loaded successfully.");
+        index_data.show_info();
+    }
 
     // let engine = index_regex::Engine::new(args.search_term.as_str())?;
     // let tree = engine.ngram(3);

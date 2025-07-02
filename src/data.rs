@@ -4,6 +4,7 @@ use bincode::{self, Decode, Encode};
 use flate2::Compression;
 use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
 use flate2::write::{DeflateEncoder, ZlibEncoder};
+use rayon::prelude::*;
 use std::io::Write;
 use std::io::prelude::*;
 use std::path::Path;
@@ -13,12 +14,12 @@ use std::{
     hash::Hash,
     io::{self, Error},
 };
-use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 #[derive(Decode, Encode, Debug)]
 pub struct IndexData {
+    ngram_len: u8,
     id_to_file: HashMap<FileIndex, FileRange>,
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
 }
@@ -91,23 +92,12 @@ impl FileData {
 }
 
 impl IndexData {
-    pub fn new() -> Self {
+    pub fn new(ngram_len: u8) -> Self {
         Self {
+            ngram_len,
             id_to_file: HashMap::new(),
             ngram_to_file_line: HashMap::new(),
         }
-    }
-
-    pub(crate) fn dump(&self,path: &Path) -> Result<(), io::Error> {
-        let mut output = fs::File::create(path.join("igrep.idx"))?;
-        let encoded = bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to encode index data: {}", e),
-            )
-        })?;
-        output.write_all(&encoded)?;
-        Ok(())
     }
 
     pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<NgramRange> {
@@ -133,11 +123,26 @@ impl IndexData {
     ) -> Option<NgramRange> {
         self.ngram_to_file_line.insert(ngram_index, range)
     }
+
+    pub fn show_info(&self) {
+        println!("Index contains:");
+        println!(
+            "  {} files {}",
+            self.id_to_file.len(),
+            std::mem::size_of::<FileRange>()
+        );
+        println!(
+            "  {} ngrams {}",
+            self.ngram_to_file_line.len(),
+            std::mem::size_of::<NgramRange>()
+        );
+    }
 }
 
 impl FromToData for NgramData {}
 impl FromToData for FileLineData {}
 impl FromToData for FileData {}
+impl FromToData for IndexData {}
 
 pub trait FromToData {
     fn from_data(data: Vec<u8>) -> Result<Self, io::Error>
