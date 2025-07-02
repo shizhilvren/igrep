@@ -96,8 +96,8 @@ impl IndexData {
         }
     }
 
-    pub(crate) fn dump(&self) -> Result<(), io::Error> {
-        let mut output = fs::File::create("igrep.idx")?;
+    pub(crate) fn dump(&self,path: &path::Path) -> Result<(), io::Error> {
+        let mut output = fs::File::create(path.join("igrep.idx"))?;
         let encoded = bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::Other,

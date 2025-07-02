@@ -4,6 +4,7 @@ use crate::index::{FileIndex, FileLineIndex, LineIndex, NgramIndex};
 use crate::range::{FileLineRange, FileRange, NgramRange, Range};
 use bincode::{self, Decode as bincode_decode, Encode as bincode_encode};
 use std::io::Write;
+use std::path;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -80,16 +81,17 @@ impl Encode {
         }
     }
 
-    pub fn dump(&mut self) -> Result<(), io::Error> {
+    pub fn dump(&mut self, path: &path::Path) -> Result<(), io::Error> {
         let mut index_data = IndexData::new();
-        let mut output = fs::File::create("igrep.dat")?;
+        let igrep_data = path.join("igrep.dat");
+        let mut output = fs::File::create(igrep_data)?;
         let offset = 0_u64;
 
         let offset = self.dump_file_lines(&mut output, offset)?;
         let offset = self.dump_id_to_file(&mut index_data, &mut output, offset)?;
         let _offset = self.dump_ngrams(&mut index_data, &mut output, offset)?;
 
-        index_data.dump()?;
+        index_data.dump(path)?;
         Ok(())
     }
 

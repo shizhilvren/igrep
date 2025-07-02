@@ -6,9 +6,7 @@ mod index;
 mod range;
 
 use std::{
-    fs::{self, File},
-    io::{BufRead, Read, Seek},
-    time::Instant,
+    fs::{self, File}, io::{BufRead, Read, Seek}, path::Path, time::Instant
 };
 
 use crate::{
@@ -153,7 +151,7 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
 
             // 记录开始时间
             let start_time = Instant::now();
-            let ans = Buuilder::index(&fid_builder, file_content, args.ngram);
+            let ans = Builder::index(&fid_builder, file_content, args.ngram);
             // 计算并打印索引时间
             let duration = start_time.elapsed();
 
@@ -166,7 +164,7 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
         })
         .collect::<Vec<_>>();
     let mut encode_data = Buuilder::merge(merges);
-    encode_data.dump();
+    encode_data.dump(Path::new(&args.config))?;
 
     Ok(())
 }
