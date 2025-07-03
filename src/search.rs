@@ -1,20 +1,13 @@
 use crate::{
-    builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     data::{FileData, FileLineData, FromToData, IndexData, NgramData},
     index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
     range::{FileRange, NgramRange},
 };
-use rayon::iter::*;
 use regex_syntax::{
-    hir::{Hir, HirKind, Literal},
+    hir::{Hir, HirKind},
     parse,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::{Error, Read},
-    mem::{replace, take},
-};
+use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::*;
 
 // Init -> NgramsIndex -> NgramData -> FileLinesIndex -> FileLinesData
@@ -32,7 +25,6 @@ pub enum NgramTreeResult {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 enum NgramTree {
-    Empty,
     ALL,
     Gram(NgramIndex),
     Concat(Vec<NgramTree>),
@@ -276,10 +268,10 @@ impl NgramTreeResult {
 }
 
 impl NgramTree {
+    #[allow(unused)]
     fn is_all(&self) -> bool {
         match self {
             Self::ALL => true,
-            Self::Empty => false,
             Self::Gram(_) => false,
             Self::Alternation(sub) => sub.iter().any(|ngram_tree| ngram_tree.is_all()),
             Self::Concat(sub) => sub.iter().all(|t| t.is_all()),
@@ -288,7 +280,6 @@ impl NgramTree {
     pub fn ngrams(&self) -> Vec<NgramIndex> {
         let mut ngrams = match self {
             Self::ALL => vec![],
-            Self::Empty => vec![],
             Self::Gram(e) => vec![e.clone()],
             Self::Alternation(sub) | Self::Concat(sub) => {
                 sub.iter().map(|t| t.ngrams()).flatten().collect()
@@ -304,7 +295,6 @@ impl NgramTree {
     ) -> NgramTreeResult {
         let ans = match self {
             Self::ALL => NgramTreeResult::ALL,
-            Self::Empty => NgramTreeResult::Set(HashSet::new()),
             Self::Gram(e) => match ngram_to_data.get(e) {
                 Some(data) => NgramTreeResult::Set(
                     data.file_lines()

@@ -27,7 +27,7 @@ impl Builder {
                 io::ErrorKind::InvalidInput,
                 "Ngram length cannot be less than 3",
             ));
-        } else if ngram_len > 255 {
+        } else if ngram_len > 10 {
             return Err(Error::new(
                 io::ErrorKind::InvalidInput,
                 "Ngram length cannot be greater than 255",
@@ -121,15 +121,6 @@ impl FileContent {
         &self.lines
     }
 
-    /// # panic
-    pub fn get_line(&self, line_number: LineIndex) -> Option<&String> {
-        match line_number.line_number() {
-            0 => None, // Lines are 1-indexed
-            _ => self
-                .lines
-                .get(line_number.line_number().saturating_sub(1) as usize),
-        }
-    }
     pub fn get_name(&self) -> &AbsPath {
         &self.full_file_name
     }
@@ -207,13 +198,6 @@ impl FileIndexBuilder {
 }
 
 impl FileIndexFinalBuilder {
-    pub fn files(&self) -> Vec<(&FileIndex, &AbsPath)> {
-        self.0
-            .file_to_id
-            .iter()
-            .map(|(path, id)| (id, path))
-            .collect()
-    }
     pub fn get(&self, path: &AbsPath) -> Option<&FileIndex> {
         self.0.file_to_id.get(path)
     }

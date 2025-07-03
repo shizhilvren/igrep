@@ -1,11 +1,6 @@
 use crate::data::FromToData;
 use bincode::{self, Decode, Encode};
-use std::{
-    collections::{HashMap, HashSet},
-    fs,
-    hash::Hash,
-    io::{self, Error},
-};
+use std::hash::Hash;
 use wasm_bindgen::prelude::*;
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.

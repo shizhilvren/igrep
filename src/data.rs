@@ -1,18 +1,14 @@
 use crate::index::{FileIndex, FileLineIndex, LineIndex, NgramIndex};
-use crate::range::{FileLineRange, FileRange, NgramRange, Range};
+use crate::range::{FileLineRange, FileRange, NgramRange};
 use bincode::{self, Decode, Encode};
 use flate2::Compression;
-use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
-use flate2::write::{DeflateEncoder, ZlibEncoder};
-use rayon::prelude::*;
+use flate2::read::DeflateDecoder;
+use flate2::write::DeflateEncoder;
 use std::io::Write;
 use std::io::prelude::*;
-use std::path::Path;
 use std::{
-    collections::{HashMap, HashSet},
-    fs,
-    hash::Hash,
-    io::{self, Error},
+    collections::HashMap,
+    io::{self},
 };
 use wasm_bindgen::prelude::*;
 

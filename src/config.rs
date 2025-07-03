@@ -1,18 +1,18 @@
 
-pub struct Config {
-    path: String,
-}
+// pub struct Config {
+//     path: String,
+// }
 
-impl Config {
-    pub fn new(path: String) -> Self {
-        Config { path }
-    }
+// impl Config {
+//     pub fn new(path: String) -> Self {
+//         Config { path }
+//     }
 
-    pub fn path(&self) -> &str {
-        &self.path
-    }
+//     pub fn path(&self) -> &str {
+//         &self.path
+//     }
 
-}
+// }
 
 // #[cfg(test)]
 // mod tests {

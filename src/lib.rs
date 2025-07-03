@@ -1,7 +1,6 @@
 pub mod builder;
 pub mod config;
 pub mod data;
-pub mod decode;
 pub mod encode;
 pub mod index;
 pub mod index_file;
@@ -9,12 +8,9 @@ pub mod index_regex;
 pub mod range;
 pub mod search;
 
-use std::collections::{HashMap, HashSet};
-
-use js_sys::Array;
 use wasm_bindgen::prelude::*;
 
-use crate::{range::{NgramRange, Range}, search::Engine};
+use crate::range::{NgramRange, Range};
 
 #[wasm_bindgen]
 pub struct A {

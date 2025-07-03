@@ -9,23 +9,16 @@ mod search;
 use crate::search::{Engine, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
-    data::{FromToData, IndexData},
-    index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
     range::Offset,
 };
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use rayon::prelude::*;
-use regex::Regex;
-use regex_syntax::{
-    ast::print,
-    hir::{Hir, HirKind, Literal},
-    parse,
-};
+
+use std::fs;
 use std::{
-    fs::{self, File, read},
-    io::{self, BufRead, Read, Seek},
+    io::{ BufRead, Read, Seek},
     path::Path,
     time::Instant,
 };
@@ -266,42 +259,3 @@ fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io
     Ok(buffer)
 }
 
-// fn get_ngram_data(file: &str, index_data: &IndexData, ngram_index: &NgramIndex) -> NgramData {
-//     index_data
-//         .get_ngram_range(ngram_index)
-//         .and_then(|range| {
-//             println!("get ngram {:?} range {:?}", &ngram_index, &range);
-//             read_range(file, range.0.start, range.0.start + range.0.len as u64)
-//                 .and_then(|data| NgramData::from_data(data))
-//                 .map_or(None, |d| Some(d))
-//         })
-//         .unwrap_or(NgramData::new())
-// }
-
-// fn get_file_line_data(
-//     file: &str,
-//     index_data: &IndexData,
-//     file_line_index: &FileLineIndex,
-// ) -> (FileLineData, String) {
-//     let file_range = index_data
-//         .get_file_range(file_line_index.file_id())
-//         .unwrap();
-
-//     let file_data = read_range(
-//         file,
-//         file_range.0.start,
-//         file_range.0.start + file_range.0.len as u64,
-//     )
-//     .unwrap();
-//     let file_data = FileData::from_data(file_data).unwrap();
-
-//     let file_line_range = file_data.lines_range(file_line_index.line_id()).unwrap();
-//     let file_line_data = read_range(
-//         file,
-//         file_line_range.0.start,
-//         file_line_range.0.start + file_line_range.0.len as u64,
-//     )
-//     .unwrap();
-//     let file_line_data = FileLineData::from_data(file_line_data).unwrap();
-//     (file_line_data, file_data.name().clone())
-// }
