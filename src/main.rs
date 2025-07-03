@@ -6,7 +6,7 @@ mod index;
 mod range;
 mod search;
 
-use crate::search::Engine;
+use crate::search::{Engine, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     data::{FromToData, IndexData},
@@ -198,86 +198,55 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
         .open(idx_file_path)?;
     let mut idx_buf = Vec::new();
     idx_file.read_to_end(&mut idx_buf)?;
-    let mut engine = Engine::new(idx_buf)?;
+    let engine = Engine::new(idx_buf).map_err(|e| anyhow!(e))?;
     if verbose {
         println!("Index data loaded successfully.");
         engine.show_info();
     }
-    engine.regex(args.search_term.as_str())?;
-    let ngrams = engine.ngram_ranges().map_or_else(
-        || {
-            Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "No ngram ranges found for the search term.",
-            ))
-        },
-        |ngram_ranges| Ok(ngram_ranges),
-    )?;
-    let ranges_data = ngrams
+    let ngram_tree = engine
+        .regex(args.search_term.as_str())
+        .map_err(|e| anyhow!(e))?;
+    let ngrams = engine.ngram_ranges(&ngram_tree);
+    let ngram_index_datas = ngrams
         .into_par_iter()
-        .map(|range| {
-            let start = range.0.start;
-            let end = range.0.start + range.0.len as u64;
+        .map(|idx_range| {
+            let start = idx_range.range.0.start;
+            let end = idx_range.range.0.start + idx_range.range.0.len as u64;
             read_range(dat_file_path.as_str(), start, end)
+                .and_then(|r| Ok(NgreamIndexData::new(idx_range.index(), r)))
                 .map_err(|e| anyhow!("Failed to read range: {}", e))
         })
         .collect::<Result<Vec<_>>>()?;
-    // let engine = index_regex::Engine::new(args.search_term.as_str())?;
-    // let tree = engine.ngram(3);
-    // let simple_tree = tree.is_all();
-    // println!("Ngram tree: {:?}", &tree);
-    // println!("Ngram is all: {:?}", &simple_tree);
-    // let ngrams = tree.ngrams();
-    // println!("Ngrams need get: {:?}", &ngrams);
-    // for ngram in &ngrams {
-    //     let ngram_data = get_ngram_data(
-    //         format!("{}/igrep.dat", args.config).as_str(),
-    //         &index_data,
-    //         &ngram,
-    //     );
-    //     println!("{:?} -> {}", &ngram, ngram_data.file_lines().len());
-    // }
+    let ngram_tree_result_struct = engine
+        .get_search_result(&ngram_tree, ngram_index_datas)
+        .map_err(|e| anyhow!(e))?;
 
-    // let index = ngrams
-    //     .iter()
-    //     .map(|ngram| {
-    //         let ngram_data = get_ngram_data(
-    //             format!("{}/igrep.dat", args.config).as_str(),
-    //             &index_data,
-    //             &ngram,
-    //         );
-    //         (ngram.clone(), ngram_data)
-    //     })
-    //     .collect::<HashMap<_, _>>();
-    // let ref_index = index
-    //     .iter()
-    //     .map(|(ngram, data)| (ngram.clone(), data))
-    //     .collect::<HashMap<_, _>>();
-    // let result = tree.get_file_lines(&ref_index);
-    // // println!("file lines {:?}", &result);
-    // match result {
-    //     index_regex::NgramTreeResult::ALL => println!("chat not longer then index"),
-    //     index_regex::NgramTreeResult::Set(sub) => {
-    //         println!("Found {} file lines matching the search term", sub.len());
-    //         let re = Regex::new(args.search_term.as_str()).unwrap();
-    //         sub.into_iter()
-    //             .map(|e| {
-    //                 let d = get_file_line_data(
-    //                     format!("{}/igrep.dat", args.config).as_str(),
-    //                     &index_data,
-    //                     &e,
-    //                 );
-    //                 (e, d)
-    //             })
-    //             .filter(|(i, d)| re.is_match(d.0.get()))
-    //             .for_each(|(i, d)| {
-    //                 println!("{}:{:?}{}", d.1, i.line_id().line_number(), d.0.get());
-    //             });
-    //     }
-    // }
+    if ngram_tree_result_struct.is_all() {
+        println!("search len smail then 3");
+    } else {
+        ngram_tree_result_struct
+            .file_lines()
+            .map_err(|e| anyhow!(e))?
+            .into_iter()
+            .for_each(|file_lines| {
+                let r = engine.file_range(&file_lines.file).unwrap();
+                let start = r.0.start;
+                let end = r.0.start + r.0.len as u64;
+                let data = read_range(dat_file_path.as_str(), start, end).unwrap();
+                let file_data = engine.build_file_data(data).unwrap();
+                println!("{}", file_data.name());
+                file_lines.lines().into_iter().for_each(|line| {
+                    let r = file_data.lines_range(&line).unwrap();
+                    let start = r.0.start;
+                    let end = r.0.start + r.0.len as u64;
+                    let data = read_range(dat_file_path.as_str(), start, end).unwrap();
+                    let line_data = engine.build_file_line_data(data).unwrap();
+                    println!("{}:{}", line.line_number(), line_data.get());
+                });
+            });
+    }
 
-    // let regex = parse(args.search_term.as_str())?;
-    // println!("Parsed regex: {:?}", regex);
+    println!("Parsed regex: {:?}", args.search_term);
 
     Ok(())
 }

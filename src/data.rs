@@ -24,9 +24,11 @@ pub struct IndexData {
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
 }
 
+#[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct FileLineData(String);
 
+#[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct FileData {
     name: String,
@@ -62,12 +64,26 @@ impl NgramData {
     }
 }
 
+#[wasm_bindgen]
 impl FileLineData {
-    pub fn get(&self) -> &String {
-        &self.0
+    pub fn get(&self) -> String {
+        self.0.clone()
     }
+}
+
+impl FileLineData {
     pub fn new(line: String) -> Self {
         Self(line)
+    }
+}
+
+#[wasm_bindgen]
+impl FileData {
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+    pub fn lines_range(&self, line_index: &LineIndex) -> Option<FileLineRange> {
+        self.lines_range.get(line_index).cloned()
     }
 }
 
@@ -78,16 +94,19 @@ impl FileData {
             lines_range: HashMap::new(),
         }
     }
-    pub fn name(&self) -> &String {
-        &self.name
-    }
-    pub fn lines_range(&self, line_index: &LineIndex) -> Option<&FileLineRange> {
-        self.lines_range.get(line_index)
-    }
-
     pub fn insert_line_range(&mut self, line_index: LineIndex, range: FileLineRange) {
         assert!(!self.lines_range.contains_key(&line_index));
         self.lines_range.entry(line_index).or_insert(range);
+    }
+}
+
+impl IndexData {
+    pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<NgramRange> {
+        self.ngram_to_file_line.get(ngram_index).cloned()
+    }
+
+    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<FileRange> {
+        self.id_to_file.get(file_index).cloned()
     }
 }
 
@@ -101,14 +120,6 @@ impl IndexData {
     }
     pub fn ngram_len(&self) -> u8 {
         self.ngram_len
-    }
-
-    pub fn get_ngram_range(&self, ngram_index: &NgramIndex) -> Option<NgramRange> {
-        self.ngram_to_file_line.get(ngram_index).cloned()
-    }
-
-    pub fn get_file_range(&self, file_index: &FileIndex) -> Option<FileRange> {
-        self.id_to_file.get(file_index).cloned()
     }
 
     pub(crate) fn add_file(
