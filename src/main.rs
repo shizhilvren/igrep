@@ -4,13 +4,17 @@ mod data;
 mod encode;
 mod index;
 mod range;
+mod search;
 
+use crate::search::Engine;
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     data::{FromToData, IndexData},
     index::{FileIndex, FileLineIndex, LineIndex, NgramIndex},
+    range::Offset,
 };
-use anyhow::Result;
+
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use rayon::prelude::*;
 use regex::Regex;
@@ -20,8 +24,8 @@ use regex_syntax::{
     parse,
 };
 use std::{
-    fs::{self, File},
-    io::{BufRead, Read, Seek},
+    fs::{self, File, read},
+    io::{self, BufRead, Read, Seek},
     path::Path,
     time::Instant,
 };
@@ -186,18 +190,38 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     println!("Using config directory: {}", args.config);
     println!("Search term: {}", args.search_term);
 
+    let idx_file_path = format!("{}/igrep.idx", args.config);
+    let dat_file_path = format!("{}/igrep.dat", args.config);
     let mut idx_file = fs::OpenOptions::new()
         .read(true)
         .write(false)
-        .open(format!("{}/igrep.idx", args.config))?;
+        .open(idx_file_path)?;
     let mut idx_buf = Vec::new();
     idx_file.read_to_end(&mut idx_buf)?;
-    let index_data = IndexData::from_data(idx_buf)?;
+    let mut engine = Engine::new(idx_buf)?;
     if verbose {
         println!("Index data loaded successfully.");
-        index_data.show_info();
+        engine.show_info();
     }
-
+    engine.regex(args.search_term.as_str())?;
+    let ngrams = engine.ngram_ranges().map_or_else(
+        || {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No ngram ranges found for the search term.",
+            ))
+        },
+        |ngram_ranges| Ok(ngram_ranges),
+    )?;
+    let ranges_data = ngrams
+        .into_par_iter()
+        .map(|range| {
+            let start = range.0.start;
+            let end = range.0.start + range.0.len as u64;
+            read_range(dat_file_path.as_str(), start, end)
+                .map_err(|e| anyhow!("Failed to read range: {}", e))
+        })
+        .collect::<Result<Vec<_>>>()?;
     // let engine = index_regex::Engine::new(args.search_term.as_str())?;
     // let tree = engine.ngram(3);
     // let simple_tree = tree.is_all();
@@ -258,20 +282,20 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-// fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io::Error> {
-//     // println!(
-//     //     "Reading range {}-{} size: {} from file: {}",
-//     //     start,
-//     //     end,
-//     //     end - start,
-//     //     file
-//     // );
-//     let mut file = fs::File::open(file)?;
-//     let mut buffer = vec![0; (end - start) as usize];
-//     file.seek(std::io::SeekFrom::Start(start as u64))?;
-//     file.read_exact(&mut buffer)?;
-//     Ok(buffer)
-// }
+fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io::Error> {
+    // println!(
+    //     "Reading range {}-{} size: {} from file: {}",
+    //     start,
+    //     end,
+    //     end - start,
+    //     file
+    // );
+    let mut file = fs::File::open(file)?;
+    let mut buffer = vec![0; (end - start) as usize];
+    file.seek(std::io::SeekFrom::Start(start as u64))?;
+    file.read_exact(&mut buffer)?;
+    Ok(buffer)
+}
 
 // fn get_ngram_data(file: &str, index_data: &IndexData, ngram_index: &NgramIndex) -> NgramData {
 //     index_data

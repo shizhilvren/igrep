@@ -1,6 +1,7 @@
 use crate::builder::FileContent;
 use crate::data::{FileData, FileLineData, FromToData, IndexData, NgramData};
 use crate::index::{FileIndex, FileLineIndex, LineIndex, NgramIndex};
+use crate::range::Offset;
 use crate::range::{FileLineRange, FileRange, NgramRange, Range};
 use bincode::{self, Decode as bincode_decode, Encode as bincode_encode};
 use rayon::iter::*;
@@ -13,7 +14,6 @@ use std::{
     io::{self, Error},
 };
 
-pub type Offset = u64;
 pub struct Encode {
     file_lines: Vec<(FileLineIndex, FileLineData)>,
     file_paths: HashMap<FileIndex, FileData>,
