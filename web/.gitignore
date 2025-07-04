@@ -28,3 +28,6 @@ coverage
 *.sw?
 
 *.tsbuildinfo
+
+igrep/igrep.idx
+igrep/igrep.dat

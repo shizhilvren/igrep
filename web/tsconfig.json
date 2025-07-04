@@ -7,5 +7,12 @@
     {
       "path": "./tsconfig.app.json"
     }
-  ]
+  ],
+  "compilerOptions": {
+    "types": [
+      "element-plus/global"
+    ], // 添加全局类型
+    "moduleResolution": "node", // 确保使用 Node 模块解析
+    "esModuleInterop": true // 启用 ES 模块互操作
+  }
 }
