@@ -6,7 +6,7 @@ mod index;
 mod range;
 mod search;
 
-use crate::search::{Engine, NgreamIndexData};
+use crate::search::{Engine, FileDataMatchRange, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     range::Offset,
@@ -14,6 +14,7 @@ use crate::{
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use rayon::prelude::*;
 
 use std::fs;
@@ -231,14 +232,19 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
                 let file_lines = file_lines
                     .lines()
                     .into_iter()
-                    .map(|line| {
+                    .filter_map(|line| {
                         let r = file_data.lines_range(&line).unwrap();
                         let start = r.0.start;
                         let end = r.0.start + r.0.len as u64;
                         let data = read_range(dat_file_path.as_str(), start, end).unwrap();
                         let line_data = engine.build_file_line_data(data).unwrap();
-                        let match_range = engine.file_data_match(&line_data, result);
-                        (line.line_number(), line_data.get(), match_range)
+                        let match_ranges =
+                            engine.file_data_match(&line_data, &ngram_tree_result_struct);
+                        if match_ranges.is_empty() {
+                            return None;
+                        } else {
+                            Some((line.line_number(), line_data.get(), match_ranges))
+                        }
                     })
                     .collect::<Vec<_>>();
                 (file_name, file_lines)
@@ -251,15 +257,21 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
                 }
             })
             .for_each(|(name, lines)| {
-                println!("File: {}", name);
-                for (line_number, line_content, match_range) in lines {
-                    if let Some((start, end)) = match_range {
+                println!("{}", name.purple());
+                for (line_number, line_content, match_ranges) in lines {
+                    for FileDataMatchRange { start, end } in match_ranges {
+                        // Split the string to highlight the matched part
+                        let before = &line_content[..start as usize];
+                        let matched = &line_content[start as usize..end as usize].red();
+                        let after = &line_content[end as usize..];
+
                         println!(
-                            "Line {}: {} (match: {}-{})",
-                            line_number, line_content, start, end
+                            "{}: {}{}{}",
+                            line_number.to_string().green(),
+                            before,
+                            matched,
+                            after
                         );
-                    } else {
-                        println!("Line {}: {}", line_number, line_content);
                     }
                 }
             });
