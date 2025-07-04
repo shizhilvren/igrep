@@ -18,8 +18,14 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // 添加对pkg文件夹的别名，方便引入
+      'igrep_pkg': fileURLToPath(new URL('./pkg/igrep.js', import.meta.url))
     },
+  },
+  // 确保WebAssembly文件能被正确处理
+  optimizeDeps: {
+    exclude: ['igrep_pkg']  // 排除WebAssembly包以防止预构建优化问题
   },
   // 如果您想自定义构建输出目录
   // build: {
