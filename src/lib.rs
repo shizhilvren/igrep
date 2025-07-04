@@ -10,20 +10,6 @@ use wasm_bindgen::prelude::*;
 
 use crate::range::{NgramRange, Range};
 
-#[wasm_bindgen]
-pub struct A {
-    pub a: u8,
-    pub b: NgramRange,
-}
-
-#[wasm_bindgen]
-pub fn fun() -> Vec<A> {
-    vec![A {
-        a: 1,
-        b: NgramRange(Range::new(1, 10)),
-    }]
-}
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
