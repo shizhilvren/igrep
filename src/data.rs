@@ -71,6 +71,9 @@ impl FileLineData {
     pub fn new(line: String) -> Self {
         Self(line)
     }
+    pub fn get_ref(&self) -> &String {
+        &self.0
+    }
 }
 
 #[wasm_bindgen]

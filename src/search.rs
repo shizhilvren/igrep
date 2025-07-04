@@ -35,12 +35,16 @@ enum NgramTree {
 pub struct NgramTreeStruct {
     #[wasm_bindgen(skip)]
     tree: NgramTree,
+    #[wasm_bindgen(skip)]
+    re: regex::Regex,
 }
 
 #[wasm_bindgen]
 pub struct NgramTreeResultStruct {
     #[wasm_bindgen(skip)]
     result: NgramTreeResult,
+    #[wasm_bindgen(skip)]
+    re: regex::Regex,
 }
 
 #[wasm_bindgen]
@@ -92,6 +96,12 @@ impl NgreamIndexRange {
 }
 
 #[wasm_bindgen]
+pub struct FileDataMatchRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[wasm_bindgen]
 impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new(index_data_buf: Vec<u8>) -> Result<Self, String> {
@@ -103,7 +113,8 @@ impl Engine {
         let n = self.index_data.ngram_len();
         let hir = parse(pattern).map_err(|e| format!("{}", e))?;
         let tree = Self::ngram_from_hir(&hir, n);
-        Ok(NgramTreeStruct { tree: tree })
+        let re = regex::Regex::new(pattern).map_err(|e| format!("{}", e))?;
+        Ok(NgramTreeStruct { tree: tree, re: re })
     }
 
     pub fn ngram_ranges(&self, tree: &NgramTreeStruct) -> Vec<NgreamIndexRange> {
@@ -132,6 +143,7 @@ impl Engine {
             .map_err(|e| format!("{}", e))?;
         Ok(NgramTreeResultStruct {
             result: tree.tree.get_file_lines(&ngram_to_data),
+            re: tree.re.clone(),
         })
     }
 
@@ -145,6 +157,23 @@ impl Engine {
 
     pub fn build_file_line_data(&self, data: Vec<u8>) -> Result<FileLineData, String> {
         FileLineData::from_data(data).map_err(|e| format!("{}", e))
+    }
+
+    pub fn file_data_match(
+        &self,
+        file_line_data: &FileLineData,
+        result: &NgramTreeResultStruct,
+    ) -> Vec<FileDataMatchRange> {
+        let mut match_ranges = Vec::new();
+        let line = file_line_data.get_ref();
+        result.re.find_iter(line).for_each(|m| {
+            let start = m.start() as u32;
+            let end = m.end() as u32;
+            if start < end {
+                match_ranges.push(FileDataMatchRange { start, end });
+            }
+        });
+        match_ranges
     }
 }
 

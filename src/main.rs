@@ -6,7 +6,7 @@ mod index;
 mod range;
 mod search;
 
-use crate::search::{Engine, NgreamIndexData};
+use crate::search::{Engine, FileDataMatchRange, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     range::Offset,
@@ -14,11 +14,12 @@ use crate::{
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use rayon::prelude::*;
 
 use std::fs;
 use std::{
-    io::{ BufRead, Read, Seek},
+    io::{BufRead, Read, Seek},
     path::Path,
     time::Instant,
 };
@@ -221,21 +222,58 @@ fn run_search(args: SearchArgs, verbose: bool) -> Result<()> {
             .file_lines()
             .map_err(|e| anyhow!(e))?
             .into_iter()
-            .for_each(|file_lines| {
+            .map(|file_lines| {
                 let r = engine.file_range(&file_lines.file).unwrap();
                 let start = r.0.start;
                 let end = r.0.start + r.0.len as u64;
                 let data = read_range(dat_file_path.as_str(), start, end).unwrap();
                 let file_data = engine.build_file_data(data).unwrap();
-                println!("{}", file_data.name());
-                file_lines.lines().into_iter().for_each(|line| {
-                    let r = file_data.lines_range(&line).unwrap();
-                    let start = r.0.start;
-                    let end = r.0.start + r.0.len as u64;
-                    let data = read_range(dat_file_path.as_str(), start, end).unwrap();
-                    let line_data = engine.build_file_line_data(data).unwrap();
-                    println!("{}:{}", line.line_number(), line_data.get());
-                });
+                let file_name = file_data.name();
+                let file_lines = file_lines
+                    .lines()
+                    .into_iter()
+                    .filter_map(|line| {
+                        let r = file_data.lines_range(&line).unwrap();
+                        let start = r.0.start;
+                        let end = r.0.start + r.0.len as u64;
+                        let data = read_range(dat_file_path.as_str(), start, end).unwrap();
+                        let line_data = engine.build_file_line_data(data).unwrap();
+                        let match_ranges =
+                            engine.file_data_match(&line_data, &ngram_tree_result_struct);
+                        if match_ranges.is_empty() {
+                            return None;
+                        } else {
+                            Some((line.line_number(), line_data.get(), match_ranges))
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                (file_name, file_lines)
+            })
+            .filter_map(|(name, lines)| {
+                if lines.is_empty() {
+                    None
+                } else {
+                    Some((name, lines))
+                }
+            })
+            .for_each(|(name, lines)| {
+                println!("{}", name.purple());
+                for (line_number, line_content, match_ranges) in lines {
+                    for FileDataMatchRange { start, end } in match_ranges {
+                        // Split the string to highlight the matched part
+                        let before = &line_content[..start as usize];
+                        let matched = &line_content[start as usize..end as usize].red();
+                        let after = &line_content[end as usize..];
+
+                        println!(
+                            "{}: {}{}{}",
+                            line_number.to_string().green(),
+                            before,
+                            matched,
+                            after
+                        );
+                    }
+                }
             });
     }
 
@@ -258,4 +296,3 @@ fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io
     file.read_exact(&mut buffer)?;
     Ok(buffer)
 }
-
