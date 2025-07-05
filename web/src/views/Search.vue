@@ -3,7 +3,6 @@ import { ref, defineComponent, onMounted } from 'vue'
 import igrep_init, { Engine, NgreamIndexData, FileDataMatchRange } from "../../pkg/igrep"
 import ResultFile from './ResultFile.vue';
 import { FileLinesResult, LineResult, fetchFileToUint8Array, fetchFileRange } from '../typescript/search.ts';
-
 // 定义文件路径常量
 const data_file_path: URL = new URL("../../igrep/igrep.dat", import.meta.url);
 const index_file_path: URL = new URL("../../igrep/igrep.idx", import.meta.url);
@@ -18,7 +17,7 @@ defineProps<{
 }>()
 
 const init_finish = ref(false)
-const msg = ref("")
+const msg = ref("gdb_init \\(")
 const engine = ref<Engine | null>(null)
 const search_result = ref<Array<FileLinesResult>>([])
 const searching = ref<{ fun: Promise<void>, ctrl: AbortController }>()
@@ -36,6 +35,7 @@ async function search(msg: string) {
         console.debug("searching abort by user {}", e)
     }
 }
+
 async function search_one(msg: string, signal: AbortSignal) {
     search_result.value = []
     console.debug("start search {}", msg)
@@ -90,6 +90,7 @@ async function search_one(msg: string, signal: AbortSignal) {
 
                     }));
                     let line_reault_filter = lines_reault.filter(line => {
+                        // console.log(line,) 
                         return line.match.length != 0
                     })
                     if (line_reault_filter.length != 0) {
@@ -139,15 +140,22 @@ async function load_igrep() {
 <template>
     <div>
         <div>
-            load index finsihs {{ init_finish }}
-            <p>Message is: {{ msg }}</p>
-            <el-input v-model="msg" :disabled="!init_finish" style="width: 240px" placeholder="Please input" />
-            <el-button @click="search(msg)" type="primary" class="btn btn-primary">Search</el-button>
-            <!-- <p>{{ search_result }}</p> -->
+            <!-- load index finsihs {{ init_finish }} -->
+            <!-- <p>Message is: {{ msg }}</p> -->
+
+            <el-row>
+                <el-col :span="22" class="alignment-container">
+                    <el-input v-model="msg" :disabled="!init_finish" style="width: 100%" placeholder="Please input" />
+                </el-col>
+                <el-col :span="2">
+                    <el-button @click="search(msg)" type="primary" class="btn btn-primary"
+                        :disabled="!init_finish" style="width: 100%;">Search</el-button>
+                </el-col>
+            </el-row>
         </div>
         <div>
             <p>list of result </p>
-            <el-scrollbar height="400px">
+            <el-scrollbar height="100%">
                 <p v-for="item in search_result" class="scrollbar-demo-item">
                     <ResultFile :file_line_result=item />
                 </p>

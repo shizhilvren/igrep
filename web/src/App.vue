@@ -7,25 +7,38 @@ import Search from './views/Search.vue';
 
 <template>
   <main>
-    <Search />
+    <div class="common-layout">
+      <el-container>
+        <el-header>Header</el-header>
+        <el-row class="row-bg" justify="center">
+          <el-col :span="18">
+            <div class="grid-content ep-bg-purple">
+              <Search />
+            </div>
+          </el-col>
+        </el-row>
+        <el-footer>Footer</el-footer>
+      </el-container>
+    </div>
+
   </main>
 </template>
 
 <style scoped>
-header {
+/* header {
   line-height: 1.5;
 }
 
 .logo {
   display: block;
   margin: 0 auto 2rem;
-}
+} */
 
-@media (min-width: 1024px) {
+/* @media (min-width: 1024px) {
   header {
     display: flex;
     place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
+    padding-right: calc(var(--section-gap) / 4);
   }
 
   .logo {
@@ -37,5 +50,5 @@ header {
     place-items: flex-start;
     flex-wrap: wrap;
   }
-}
+} */
 </style>
