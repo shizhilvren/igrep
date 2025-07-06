@@ -17,7 +17,7 @@ defineProps<{
 }>()
 
 const init_finish = ref(false)
-const msg = ref("gdb_init \\(")
+const msg = ref("gdb_init")
 const engine = ref<Engine | null>(null)
 const search_result = ref<Array<FileLinesResult>>([])
 const searching = ref<{ fun: Promise<void>, ctrl: AbortController }>()
@@ -138,30 +138,28 @@ async function load_igrep() {
 </script>
 
 <template>
-    <div>
-        <div>
-            <!-- load index finsihs {{ init_finish }} -->
-            <!-- <p>Message is: {{ msg }}</p> -->
-
-            <el-row>
+    <el-container style="height: 100vh;">
+        <el-header style="height: 50px; background-color: white; z-index: 101;" >
+            <el-row style="align-items: center; height: 100%;">
                 <el-col :span="22" class="alignment-container">
                     <el-input v-model="msg" :disabled="!init_finish" style="width: 100%" placeholder="Please input" />
                 </el-col>
                 <el-col :span="2">
-                    <el-button @click="search(msg)" type="primary" class="btn btn-primary"
-                        :disabled="!init_finish" style="width: 100%;">Search</el-button>
+                    <el-button @click="search(msg)" type="primary" class="btn btn-primary" :disabled="!init_finish"
+                        style="width: 100%;">Search</el-button>
                 </el-col>
             </el-row>
-        </div>
-        <div>
-            <p>list of result </p>
-            <el-scrollbar height="100%">
-                <p v-for="item in search_result" class="scrollbar-demo-item">
+        </el-header>
+
+        <el-main class="result-view">
+            <el-srcollbar style="height: auto; overflow: hidden;">
+                <p v-for="item in search_result">
                     <ResultFile :file_line_result=item />
                 </p>
-            </el-scrollbar>
-        </div>
-    </div>
+            </el-srcollbar>
+
+        </el-main>
+    </el-container>
 </template>
 
 
@@ -182,11 +180,23 @@ h3 {
     text-align: center;
 }
 
+.result-view {
+    /* background-color: bisque; */
+}
+
 @media (min-width: 1024px) {
 
     .greetings h1,
     .greetings h3 {
         text-align: left;
     }
+}
+
+.layout-container-demo .toolbar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    right: 20px;
 }
 </style>

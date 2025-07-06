@@ -8,17 +8,13 @@ import Search from './views/Search.vue';
 <template>
   <main>
     <div class="common-layout">
-      <el-container>
-        <el-header>Header</el-header>
-        <el-row class="row-bg" justify="center">
-          <el-col :span="18">
-            <div class="grid-content ep-bg-purple">
-              <Search />
-            </div>
-          </el-col>
-        </el-row>
-        <el-footer>Footer</el-footer>
-      </el-container>
+      <el-row class="row-bg" justify="center">
+        <el-col :span="16">
+          <div class="grid-content ep-bg-purple">
+            <Search />
+          </div>
+        </el-col>
+      </el-row>
     </div>
 
   </main>

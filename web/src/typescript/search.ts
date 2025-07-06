@@ -13,10 +13,12 @@ export class LineResult {
 
 export class FileLinesResult {
     name: string;
+    uuid: string;
     lines: Array<LineResult>;
     constructor(name: string, lines: Array<LineResult>) {
         this.name = name
         this.lines = lines
+        this.uuid = "A" + crypto.randomUUID().split("-")[0];
     }
 }
 

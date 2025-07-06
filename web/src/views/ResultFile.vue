@@ -21,15 +21,20 @@ defineProps<{
 }>()
 
 
+function class_name(name: string) {
+    return "." + name;
+}
 </script>
 
 <template>
-    <div>
-        <p>
-            {{ file_line_result.name }}
-        </p>
-        <p v-for="item in file_line_result.lines" class="scrollbar-demo-item">
-            <ResultLine :line_number="item.line" :line_string="item.string" :ranges="item.match"  language="cpp"/>
+    <div v-bind:class="file_line_result.uuid">
+        <el-affix :offset="50" :target="class_name(file_line_result.uuid)">
+            <div class="file-header">
+                {{ file_line_result.name }}
+            </div>
+        </el-affix>
+        <p v-for="item in file_line_result.lines" class="">
+            <ResultLine :line_number="item.line" :line_string="item.string" :ranges="item.match" language="cpp" />
         </p>
     </div>
 </template>
@@ -38,5 +43,18 @@ defineProps<{
 <style>
 .hljs {
     padding: 0 !important;
+    /* background-color: #fff !important; */
+
+}
+
+.per>.code {
+}
+</style>
+<style scoped>
+.file-header {
+    padding-left: 20px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    background-color: #eef2f5;
 }
 </style>
