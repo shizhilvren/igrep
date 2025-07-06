@@ -47,8 +47,6 @@ function class_name(name: string) {
 
 }
 
-.per>.code {
-}
 </style>
 <style scoped>
 .file-header {

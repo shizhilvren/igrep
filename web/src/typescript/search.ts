@@ -66,7 +66,7 @@ export async function fetchFileRange(url: URL, start: bigint, len: bigint, signa
         // 创建带有Range头的请求
         const headers = new Headers();
         headers.append('Range', `bytes=${startBig.toString()}-${endBig.toString()}`);
-
+        headers.append('Cache-Control', `no-cache`);
         // 发起网络请求
         const response = await fetch(url, { headers, signal });
 
