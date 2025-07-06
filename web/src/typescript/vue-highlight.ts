@@ -132,12 +132,22 @@ const traverse = (node: Element | ChildNode, ranges: Set<number>, id: number) =>
         // 处理文本节点
         const text = node.textContent;
         if (text !== null) {
+            let match_text = ""
             for (let i = 0; i < text.length; i++) {
                 if (ranges.has(id + i)) {
-                    result += `<span class="match-highlight">${text[i]}</span>`;
+                    match_text += text[i];
+                    // result += `<span class="match-highlight">${text[i]}</span>`;
                 } else {
+                    if (match_text.length > 0) {
+                        result += `<span class="match-highlight">${match_text}</span>`;
+                        match_text = "";
+                    }
                     result += text[i];
                 }
+            }
+            if (match_text.length > 0) {
+                result += `<span class="match-highlight">${match_text}</span>`;
+                match_text = "";
             }
             // console.log(text)
             id += text.length

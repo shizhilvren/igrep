@@ -21,8 +21,9 @@ const msg = ref("gdb_init")
 const engine = ref<Engine | null>(null)
 const search_result = ref<Array<FileLinesResult>>([])
 const searching = ref<{ fun: Promise<void>, ctrl: AbortController }>()
-
+const search_finish = ref(true)
 async function search(msg: string) {
+    search_finish.value = false
     let controller = new AbortController();
     const signal = controller.signal;
     if (searching.value !== undefined) {
@@ -34,6 +35,7 @@ async function search(msg: string) {
     } catch (e) {
         console.debug("searching abort by user {}", e)
     }
+    search_finish.value = true
 }
 
 async function search_one(msg: string, signal: AbortSignal) {
@@ -139,7 +141,7 @@ async function load_igrep() {
 
 <template>
     <el-container style="height: 100vh;">
-        <el-header style="height: 50px; background-color: white; z-index: 101;" >
+        <el-header style="height: 50px; background-color: white; z-index: 101;">
             <el-row style="align-items: center; height: 100%;">
                 <el-col :span="22" class="alignment-container">
                     <el-input v-model="msg" :disabled="!init_finish" style="width: 100%" placeholder="Please input" />
@@ -152,12 +154,16 @@ async function load_igrep() {
         </el-header>
 
         <el-main class="result-view">
+            <div>
+
+            </div>
+            <el-alert v-if="search_finish && search_result.length != 0" title="Search finish" type="success" />
+            <el-alert v-if="search_finish && search_result.length == 0" title="no match result" type="warning" />
             <el-srcollbar style="height: auto; overflow: hidden;">
                 <p v-for="item in search_result">
                     <ResultFile :file_line_result=item />
                 </p>
             </el-srcollbar>
-
         </el-main>
     </el-container>
 </template>
