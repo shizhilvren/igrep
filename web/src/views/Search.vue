@@ -65,6 +65,7 @@ const search_load = async () => {
     return flag
 }
 async function search_one_get_result_by_ids(ngram_tree_result_struct: NgramTreeResultStruct, id: number, signal: AbortSignal) {
+    console.debug("start get file result by id {}", id)
     let flag = false
     let engine_local = engine.value
     if (engine_local !== null) {

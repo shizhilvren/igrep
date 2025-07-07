@@ -251,7 +251,7 @@ impl NgramTreeResultStruct {
                         .or_default()
                         .insert(line_index);
                 });
-                Ok(file_lines_map
+                let mut ans = file_lines_map
                     .into_iter()
                     .map(|(fid, lids)| {
                         let mut lids = lids.into_iter().collect::<Vec<_>>();
@@ -262,7 +262,9 @@ impl NgramTreeResultStruct {
                         file: fid,
                         lines: lids,
                     })
-                    .collect::<Vec<_>>())
+                    .collect::<Vec<_>>();
+                ans.sort_by(|a, b| a.file.cmp(&b.file));
+                Ok(ans)
             }
         }
     }

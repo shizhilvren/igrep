@@ -57,6 +57,7 @@ export async function fetchFileToUint8Array(url: URL, signal?: AbortSignal): Pro
  * @returns 包含请求范围内数据的Uint8Array
  */
 export async function fetchFileRange(url: URL, start: bigint, len: bigint, signal?: AbortSignal): Promise<Uint8Array> {
+    console.debug(`fetchFileRange: ${url} from ${start} length ${len}`);
     try {
         // 确保使用BigInt处理，以支持超过2^53-1的值
         const startBig = BigInt(start);
