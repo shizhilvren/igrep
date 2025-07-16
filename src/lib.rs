@@ -5,10 +5,9 @@ pub mod encode;
 pub mod index;
 pub mod range;
 pub mod search;
+pub mod clang;
 
-use wasm_bindgen::prelude::*;
 
-use crate::range::{NgramRange, Range};
 
 // #[cfg(test)]
 // mod tests {

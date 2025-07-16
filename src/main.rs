@@ -1,4 +1,5 @@
 mod builder;
+mod clang;
 mod config;
 mod data;
 mod encode;
@@ -42,6 +43,7 @@ enum Commands {
     Index(IndexArgs),
     /// Search through indexed files
     Search(SearchArgs),
+    ClangIndex(ClangIndexArgs),
 }
 
 #[derive(Parser)]
@@ -70,6 +72,16 @@ struct SearchArgs {
     search_term: String,
 }
 
+#[derive(Parser)]
+struct ClangIndexArgs {
+    /// Sets the file to be indexed
+    #[arg(required = true)]
+    file: String,
+    /// Sets the file to be indexed
+    #[arg(long, required = true)]
+    project_dir: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -80,6 +92,10 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Index(args) => run_index(args, cli.verbose),
         Commands::Search(args) => run_search(args, cli.verbose),
+        Commands::ClangIndex(args) => {
+            // Call the Clang indexing logic with the provided file
+            clang::index::main(&args.file,&args.project_dir)
+        }
     }
 }
 

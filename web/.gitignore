@@ -29,5 +29,4 @@ coverage
 
 *.tsbuildinfo
 
-igrep/igrep.idx
-igrep/igrep.dat
+igrep/*
