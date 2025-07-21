@@ -9,10 +9,12 @@ import 'highlight.js/lib/common';
 import hljsVuePlugin from "./typescript/vue-highlight";
 
 import 'element-plus/dist/index.css'
+import router from './typescript/router'
 
 let app = createApp(App)
 app.use(ElementPlus)
 app.use(hljsVuePlugin)
+app.use(router)
 
 app.mount('#app')
 

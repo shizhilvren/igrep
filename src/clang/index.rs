@@ -1,10 +1,123 @@
 use anyhow::{Result, anyhow};
-use clang::{Clang, Entity, Index};
-use std::path::Path;
+use clang::{Clang, Entity, Index, Usr, source::SourceLocation};
+use regex_syntax::ast::print;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    path::Path,
+};
+
+#[derive(Debug, Hash, Eq, PartialEq)]
+struct FileLocation {
+    file: String,
+    line: u32,
+    column: u32,
+    offset: u32,
+}
+
+#[derive(Debug)]
+struct FunctionResult {
+    name: String,
+    declarations: HashSet<FileLocation>,
+    // function body
+    definitions: HashSet<FileLocation>,
+    calls: HashSet<FileLocation>,
+}
+
+#[derive(Debug)]
+struct IndexResult {
+    functions: HashMap<Usr, FunctionResult>,
+}
+
+impl IndexResult {
+    pub fn new() -> Self {
+        IndexResult {
+            functions: HashMap::new(),
+        }
+    }
+
+    pub fn add_function_call(&mut self, e: Entity) -> Result<()> {
+        if e.get_kind() != clang::EntityKind::CallExpr {
+            return Err(anyhow!("Not a function call expression"));
+        }
+        if let Some(ref_e) = e.get_reference() {
+            if ref_e.get_kind() == clang::EntityKind::FunctionDecl {
+                let usr = ref_e.get_usr().expect("function call without usr");
+                self.functions
+                    .entry(usr)
+                    .or_insert(FunctionResult::new(
+                        ref_e.get_name().expect("function call without name"),
+                    ))
+                    .calls
+                    .insert(FileLocation::new(
+                        e.get_location().expect("function call without location"),
+                    ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn add_function(&mut self, e: Entity) -> Result<()> {
+        if e.get_kind() != clang::EntityKind::FunctionDecl {
+            return Err(anyhow!("Not a function declaration"));
+        }
+        let loc = e
+            .get_location()
+            .expect("function declaration without location");
+        if !loc.is_in_system_header() {
+            let usr = e.get_usr().expect("function declaration without usr");
+            let name = e.get_name().expect("function declaration without name");
+            let func = self
+                .functions
+                .entry(usr)
+                .or_insert(FunctionResult::new(name));
+            match (e.is_definition(), e.is_declaration()) {
+                (false, true) => {
+                    // function declaration
+                    func.declarations.insert(FileLocation::new(loc));
+                }
+                (false, false) => {
+                    // function reference
+                    return Err(anyhow!(
+                        "Function reference found without declaration or definition"
+                    ));
+                }
+                (true, _) => {
+                    // function definition
+                    func.definitions.insert(FileLocation::new(loc));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FileLocation {
+    pub fn new(location: SourceLocation) -> Self {
+        let loc = location.get_expansion_location();
+        FileLocation {
+            file: loc.file.unwrap().get_path().to_str().unwrap().to_string(),
+            line: loc.line,
+            column: loc.column,
+            offset: loc.offset,
+        }
+    }
+}
+
+impl FunctionResult {
+    pub fn new(name: String) -> Self {
+        FunctionResult {
+            name,
+            declarations: HashSet::new(),
+            definitions: HashSet::new(),
+            calls: HashSet::new(),
+        }
+    }
+}
 
 /// 处理单个文件
-pub fn main(file: &str, dir: &str) -> Result<()> {
-    let index = clang_sys::clang_createIndex(0, 0);
+pub fn main(file: &str, dir: &str, debug: bool) -> Result<()> {
+    // let index = clang_sys::clang_createIndex(0, 0);
     let compilation_database = clang::CompilationDatabase::from_directory(dir).unwrap();
     // Acquire an instance of `Clang`
     let clang = Clang::new().unwrap();
@@ -132,126 +245,46 @@ pub fn main(file: &str, dir: &str) -> Result<()> {
         // .cache_completion_results(true)
         .detailed_preprocessing_record(true);
     let tu = parser.parse()?;
-    dfs(&tu.get_entity());
+    let mut ans = IndexResult::new();
+    dfs(&tu.get_entity(), debug, &mut ans);
+    println!("Functions found: {:?}", ans);
     Ok(())
 }
 
-// /// 处理多个文件
-// pub fn process_multiple_files(files: &[&str], dir: &str) -> Result<()> {
-//     let compilation_database = clang::CompilationDatabase::from_directory(dir)?;
-//     let clang = Clang::new()?;
-//     let index = Index::new(&clang, false, false);
-
-//     // 存储所有解析的翻译单元
-//     let mut translation_units = Vec::new();
-
-//     for &file in files {
-//         println!("Processing file: {}", file);
-
-//         // 尝试获取编译命令
-//         let commands = match compilation_database.get_compile_commands(file) {
-//             Some(cmds) => cmds,
-//             None => {
-//                 println!(
-//                     "Warning: No compilation commands found for {}, skipping",
-//                     file
-//                 );
-//                 continue;
-//             }
-//         };
-
-//         let command_list = commands.get_commands();
-//         if command_list.is_empty() {
-//             println!("Warning: Empty compilation commands for {}, skipping", file);
-//             continue;
-//         }
-
-//         let command = command_list.first().unwrap();
-//         println!("dir: {:?}", command.get_directory());
-//         println!("file: {:?}", command.get_filename());
-
-//         let args: Vec<_> = command.get_arguments().iter().cloned().collect();
-
-//         // 解析文件
-//         let mut parser = index.parser(file);
-//         let parser = parser.arguments(&args);
-//         let parser = parser.cache_completion_results(true);
-
-//         match parser.parse() {
-//             Ok(tu) => {
-//                 println!("Successfully parsed: {}", file);
-//                 translation_units.push(tu);
-//             }
-//             Err(e) => {
-//                 println!("Failed to parse {}: {:?}", file, e);
-//             }
-//         }
-//     }
-
-//     // 处理所有翻译单元
-//     for (i, tu) in translation_units.iter().enumerate() {
-//         println!("=== Translation Unit {} ===", i);
-//         dfs(&tu.get_entity());
-//     }
-
-//     Ok(())
-// }
-
-// /// 处理一个目录中的所有C/C++文件
-// pub fn process_directory(dir_path: &str, compilation_db_dir: &str) -> Result<()> {
-//     let extensions = ["c", "cpp", "cc", "cxx", "h", "hpp", "hxx"];
-//     let mut files = Vec::new();
-
-//     // 遍历目录收集所有C/C++文件
-//     collect_files(Path::new(dir_path), &extensions, &mut files)?;
-
-//     // 转换为字符串引用的切片
-//     let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
-
-//     // 处理所有文件
-//     process_multiple_files(&file_refs, compilation_db_dir)?;
-
-//     Ok(())
-// }
-
-// // 辅助函数：收集指定目录中的所有匹配扩展名的文件
-// fn collect_files(dir: &Path, extensions: &[&str], files: &mut Vec<String>) -> Result<()> {
-//     if !dir.is_dir() {
-//         return Err(anyhow!("{:?} is not a directory", dir));
-//     }
-
-//     for entry in std::fs::read_dir(dir)? {
-//         let entry = entry?;
-//         let path = entry.path();
-
-//         if path.is_dir() {
-//             // 递归处理子目录
-//             collect_files(&path, extensions, files)?;
-//         } else if let Some(ext) = path.extension() {
-//             if let Some(ext_str) = ext.to_str() {
-//                 if extensions.contains(&ext_str) {
-//                     if let Some(path_str) = path.to_str() {
-//                         files.push(path_str.to_owned());
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     Ok(())
-// }
-
-fn dfs(entity: &Entity) {
-    println!("{:?}", &entity);
-    println!("\t definition {:?}", entity.get_definition());
-    println!("\t reference {:?}", entity.get_reference());
-    println!(
-        "\t overridden methods {:?}",
-        entity.get_overridden_methods()
-    );
-    println!("\t mangled name {:?}", entity.get_mangled_name());
-    println!("\t usr {:?}", entity.get_usr());
+fn dfs(entity: &Entity, debug: bool, ans: &mut IndexResult) {
+    match entity.get_kind() {
+        clang::EntityKind::CallExpr => {
+            if let Err(e) = ans.add_function_call(entity.clone()) {
+                eprintln!("Error adding function call: {}", e);
+            }
+        }
+        clang::EntityKind::FunctionDecl => {
+            if let Err(e) = ans.add_function(entity.clone()) {
+                eprintln!("Error adding function: {}", e);
+            }
+        }
+        _ => {}
+    }
+    if debug {
+        println!("{:?}", &entity);
+        println!("\t parent {:?}", entity.get_semantic_parent());
+        println!(
+            "\t definition {} declaration {}",
+            entity.is_definition(),
+            entity.is_declaration()
+        );
+        println!("\t definition {:?}", entity.get_definition());
+        println!("\t reference {:?}", entity.get_reference());
+        println!(
+            "\t overridden methods {:?}",
+            entity.get_overridden_methods()
+        );
+        // println!("\t mangled name {:?}", entity.get_mangled_name());
+        println!("\t name {:?}", entity.get_name());
+        // println!("\t name range {:?}", entity.get_name_ranges());
+        println!("\t usr {:?}", entity.get_usr());
+    }
     for child in entity.get_children() {
-        dfs(&child);
+        dfs(&child, debug, ans);
     }
 }

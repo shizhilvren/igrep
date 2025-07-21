@@ -80,6 +80,9 @@ struct ClangIndexArgs {
     /// Sets the file to be indexed
     #[arg(long, required = true)]
     project_dir: String,
+
+    #[arg(long, default_value_t = false)]
+    debug: bool,
 }
 
 fn main() -> Result<()> {
@@ -94,7 +97,7 @@ fn main() -> Result<()> {
         Commands::Search(args) => run_search(args, cli.verbose),
         Commands::ClangIndex(args) => {
             // Call the Clang indexing logic with the provided file
-            clang::index::main(&args.file,&args.project_dir)
+            clang::index::main(&args.file, &args.project_dir, args.debug)
         }
     }
 }
