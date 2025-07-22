@@ -7,17 +7,22 @@ use std::{
     path::Path,
 };
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-struct FileLocation {
+#[derive(Debug, Hash, Eq, PartialEq, PartialOrd)]
+pub(super) struct FileLocation {
     file: String,
+    loc: OneFileLocation,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, PartialOrd)]
+pub(super) struct OneFileLocation {
     line: u32,
     column: u32,
     offset: u32,
+    len: u32,
 }
 
 #[derive(Debug)]
-struct FunctionResult {
-    name: String,
+pub(super) struct FunctionResult {
     declarations: HashSet<FileLocation>,
     // function body
     definitions: HashSet<FileLocation>,
@@ -25,8 +30,49 @@ struct FunctionResult {
 }
 
 #[derive(Debug)]
-struct IndexResult {
+pub(super) struct IndexResult {
     functions: HashMap<Usr, FunctionResult>,
+}
+
+impl OneFileLocation{
+    pub fn offset(&self) -> u32 {
+        self.offset
+    }
+    pub fn len(&self) -> u32 {
+        self.len
+    }
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+    pub fn column(&self) -> u32 {
+        self.column
+    }
+}
+impl FileLocation{
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    pub fn loc(&self) -> &OneFileLocation {
+        &self.loc
+    }
+}
+impl Ord for FileLocation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.file
+            .cmp(&other.file)
+            .then_with(|| self.loc.cmp(&other.loc))
+    }
+}
+
+impl Ord for OneFileLocation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.line
+            .cmp(&other.line)
+            .then_with(|| self.column.cmp(&other.column))
+            .then_with(|| self.offset.cmp(&other.offset))
+            .then_with(|| self.len.cmp(&other.len))
+    }
 }
 
 impl IndexResult {
@@ -45,12 +91,11 @@ impl IndexResult {
                 let usr = ref_e.get_usr().expect("function call without usr");
                 self.functions
                     .entry(usr)
-                    .or_insert(FunctionResult::new(
-                        ref_e.get_name().expect("function call without name"),
-                    ))
+                    .or_insert(FunctionResult::new())
                     .calls
                     .insert(FileLocation::new(
                         e.get_location().expect("function call without location"),
+                        ref_e.get_name().expect("function call without name").len() as u32,
                     ));
             }
         }
@@ -67,14 +112,12 @@ impl IndexResult {
         if !loc.is_in_system_header() {
             let usr = e.get_usr().expect("function declaration without usr");
             let name = e.get_name().expect("function declaration without name");
-            let func = self
-                .functions
-                .entry(usr)
-                .or_insert(FunctionResult::new(name));
+            let func = self.functions.entry(usr).or_insert(FunctionResult::new());
             match (e.is_definition(), e.is_declaration()) {
                 (false, true) => {
                     // function declaration
-                    func.declarations.insert(FileLocation::new(loc));
+                    func.declarations
+                        .insert(FileLocation::new(loc, name.len() as u32));
                 }
                 (false, false) => {
                     // function reference
@@ -84,34 +127,50 @@ impl IndexResult {
                 }
                 (true, _) => {
                     // function definition
-                    func.definitions.insert(FileLocation::new(loc));
+                    func.definitions
+                        .insert(FileLocation::new(loc, name.len() as u32));
                 }
             }
         }
         Ok(())
     }
+
+    pub fn get_functions(&self) -> &HashMap<Usr, FunctionResult> {
+        &self.functions
+    }
 }
 
 impl FileLocation {
-    pub fn new(location: SourceLocation) -> Self {
+    pub fn new(location: SourceLocation, len: u32) -> Self {
         let loc = location.get_expansion_location();
         FileLocation {
             file: loc.file.unwrap().get_path().to_str().unwrap().to_string(),
-            line: loc.line,
-            column: loc.column,
-            offset: loc.offset,
+            loc: OneFileLocation {
+                line: loc.line,
+                column: loc.column,
+                offset: loc.offset,
+                len,
+            },
         }
     }
 }
 
 impl FunctionResult {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         FunctionResult {
-            name,
             declarations: HashSet::new(),
             definitions: HashSet::new(),
             calls: HashSet::new(),
         }
+    }
+    pub fn declarations(&self) -> &HashSet<FileLocation> {
+        &self.declarations
+    }
+    pub fn definitions(&self) -> &HashSet<FileLocation> {
+        &self.definitions
+    }
+    pub fn calls(&self) -> &HashSet<FileLocation> {
+        &self.calls
     }
 }
 
@@ -238,6 +297,7 @@ pub fn main(file: &str, dir: &str, debug: bool) -> Result<()> {
         // "/remote/vcs_source02/lisimon/code/td/td1_debug/vcs-src/lp-src/verilog/lp_utils_vir.cc",
         // "lp_utils_vir.cc",
     ];
+    let args: Vec<&'static str> = vec![];
     // Parse a source file into a translation unit
     let mut parser = index.parser(file);
     let parser = parser.arguments(args.as_slice());
