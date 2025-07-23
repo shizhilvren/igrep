@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
-import { ref, defineComponent, onMounted } from "vue";
-const route = useRoute();
-const router = useRouter();
+import { ref, defineComponent, onMounted, watch } from "vue";
+const route = ref(useRoute());
+const router = ref(useRouter());
 
 onMounted(() => {
   console.log("onMounted");
-  router.isReady().then(() => {
-    let path = "../../index/" + route.params.pathMatch.join("/") + ".json";
+});
+
+
+watch(
+  () => route.value.params.pathMatch,
+  (newPath) => {
+    console.log("path changed", newPath);
+    let path = "../../index/" + newPath.join("/") + ".json";
     console.log("path", path);
     const json_path: URL = new URL(path, import.meta.url);
     fetchData(json_path).then((data) => {
       console.log("data", data);
       file.value = data;
     });
-  });
-  console.log("file", file);
-});
-
+  },
+  { immediate: true }
+);
 defineProps<{}>();
 
 const msg = ref("some file");
