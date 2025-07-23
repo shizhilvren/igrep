@@ -4,7 +4,7 @@ import Index from '../index/File.vue'
 
 const routes = [
   { path: '/search', component: Search },
-  { path: '/index', component: Index },
+  { path: '/index/:pathMatch(.*)*', component: Index },
 ]
 
 const router = createRouter({

@@ -1,8 +1,11 @@
+use crate::clang::json::FileJson;
 use anyhow::{Result, anyhow};
 use clang::{Clang, Entity, Index, Usr, source::SourceLocation};
 use regex_syntax::ast::print;
+use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     hash::Hash,
     path::Path,
 };
@@ -34,7 +37,7 @@ pub(super) struct IndexResult {
     functions: HashMap<Usr, FunctionResult>,
 }
 
-impl OneFileLocation{
+impl OneFileLocation {
     pub fn offset(&self) -> u32 {
         self.offset
     }
@@ -48,7 +51,7 @@ impl OneFileLocation{
         self.column
     }
 }
-impl FileLocation{
+impl FileLocation {
     pub fn file(&self) -> &str {
         &self.file
     }
@@ -305,9 +308,18 @@ pub fn main(file: &str, dir: &str, debug: bool) -> Result<()> {
         // .cache_completion_results(true)
         .detailed_preprocessing_record(true);
     let tu = parser.parse()?;
-    let mut ans = IndexResult::new();
-    dfs(&tu.get_entity(), debug, &mut ans);
-    println!("Functions found: {:?}", ans);
+    let mut index_result = IndexResult::new();
+    dfs(&tu.get_entity(), debug, &mut index_result);
+    println!("Functions found: {:?}", index_result);
+    let json = FileJson::from_index(&index_result, file.to_string())?;
+    let json = serde_json::to_string(&json)?;
+    println!("JSON output: {}", json);
+    let file_path = format!("web/index/{}.json", file);
+    let path = std::path::Path::new(&file_path);
+    let prefix = path.parent().unwrap();
+    std::fs::create_dir_all(prefix).unwrap();
+    let mut file_handle = fs::File::create(path)?;
+    file_handle.write_all(json.as_bytes())?;
     Ok(())
 }
 
