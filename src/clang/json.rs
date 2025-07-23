@@ -1,5 +1,6 @@
 use crate::clang::index::{FileLocation, FunctionResult, IndexResult, OneFileLocation};
 use anyhow::{Result, anyhow};
+use clang::Usr;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -31,22 +32,34 @@ pub struct Class(String);
 #[derive(Serialize, Deserialize)]
 pub struct Id(String);
 
-fn make_tokens(index: &IndexResult) -> Result<HashMap<String, Vec<&OneFileLocation>>> {
-    let mut locs = index
+enum OneFileLocationData {
+    FunctionDecl(Usr),
+    FunctionDef(FunctionDef),
+    FunctionCall(Usr),
+}
+struct FunctionDef {
+    usr: Usr,
+    only_one: bool,
+}
+
+fn make_tokens(index: &IndexResult) -> Result<HashMap<String, Vec<(&OneFileLocation, &Usr)>>> {
+    let locs = index
         .get_functions()
         .iter()
         .map(|(usr, fr)| {
+            let len = fr.calls().len() + fr.definitions().len() + fr.declarations().len();
             fr.calls()
                 .iter()
                 .chain(fr.definitions().iter())
                 .chain(fr.declarations().iter())
+                .zip(std::iter::repeat(usr))
         })
         .flatten()
-        .map(|loc| (loc.file(), loc.loc()))
-        .fold(HashMap::new(), |mut acc, (file, loc)| {
+        .map(|(loc, usr)| (loc.file(), loc.loc(), usr))
+        .fold(HashMap::new(), |mut acc, (file, loc, usr)| {
             acc.entry(file.to_string())
                 .or_insert_with(Vec::new)
-                .push(loc);
+                .push((loc, usr));
             acc
         })
         .into_iter()
@@ -79,7 +92,7 @@ fn make_tokens(index: &IndexResult) -> Result<HashMap<String, Vec<&OneFileLocati
 
 fn split_one_file(
     file: String,
-    tokens: HashMap<String, Vec<&OneFileLocation>>,
+    tokens: HashMap<String, Vec<(&OneFileLocation, &Usr)>>,
 ) -> Result<FileJson> {
     let lines = fs::read_to_string(&file)
         .map_err(|e| anyhow!("Failed to read file {}: {}", &file, e))?
@@ -92,19 +105,24 @@ fn split_one_file(
         .ok_or_else(|| anyhow!("No tokens found for file {}", &file))?;
     let acc = lines
         .iter()
-        .map(|line| vec![0, line.len() as u32])
+        .map(|line| HashMap::from([(0, vec![]), (line.len() as u32, vec![])]))
         .collect::<Vec<_>>();
     let points = tokens
         .iter()
-        .fold(acc, |mut acc, loc| {
-            acc[(loc.line() - 1) as usize].push(loc.column() - 1);
-            acc[(loc.line() - 1) as usize].push(loc.column() - 1 + loc.len());
+        .fold(acc, |mut acc, (loc, usr)| {
+            let start = loc.column() - 1;
+            let end = start + loc.len();
+            acc[(loc.line() - 1) as usize]
+                .entry(start)
+                .or_insert(vec![])
+                .push(usr);
+            acc[(loc.line() - 1) as usize].entry(end).or_insert(vec![]);
             acc
         })
         .into_iter()
-        .map(|mut points| {
-            points.sort();
-            points.dedup();
+        .map(|points| {
+            let mut points = points.into_iter().collect::<Vec<_>>();
+            points.sort_by_key(|a| a.0);
             points
         })
         .collect::<Vec<_>>();
@@ -117,13 +135,22 @@ fn split_one_file(
                     .as_slice()
                     .windows(2)
                     .map(|pair| {
-                        let start = pair[0] as usize;
-                        let end = pair[1] as usize;
+                        let data = &pair[0].1;
+                        let id = match data.len() {
+                            1 => Some(Id(data[0].0.clone())), // No tokens in this range
+                            _ => None,
+                        };
+                        let classes = data
+                            .iter()
+                            .map(|usr| Class("fn".to_string()))
+                            .collect::<Vec<_>>();
+                        let start = pair[0].0 as usize;
+                        let end = pair[1].0 as usize;
                         let token = line[start..end].to_string();
                         Token {
                             token,
-                            classes: vec![],
-                            id: None,
+                            classes: classes,
+                            id: id,
                             url: None,
                         }
                     })

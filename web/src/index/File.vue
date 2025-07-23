@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
-import { ref, defineComponent, onMounted, watch } from "vue";
+import { ref, defineComponent, nextTick, onMounted, watch } from "vue";
 const route = ref(useRoute());
 const router = ref(useRouter());
 
@@ -19,6 +19,10 @@ watch(
     fetchData(json_path).then((data) => {
       console.log("data", data);
       file.value = data;
+      nextTick().then(() => {
+        const el = document.getElementById("1");
+        router.value.push(route.value.fullPath);
+      });
     });
   },
   { immediate: true }
@@ -26,7 +30,7 @@ watch(
 defineProps<{}>();
 
 const msg = ref("some file");
-const file = ref({ path: "not load", content: { content: [{ tokens: [{ token: "empty" }] }] } });
+const file = ref({ path: "not load", content: { content: [{ tokens: [{ token: "empty", classes: [] }] }] } });
 
 // In a Vue component method or lifecycle hook (e.g., created or mounted)
 async function fetchData(path: URL) {
@@ -54,10 +58,13 @@ async function fetchData(path: URL) {
       </div>
     </el-col>
     <el-col :span="23">
-      <pre><span v-for="token in line.tokens" style=""><span>{{ token.token }}</span></span></pre>
+      <pre><span v-for="token in line.tokens" style="" :class="token.classes" ><span>{{ token.token }}</span></span></pre>
     </el-col>
   </el-row>
-  <!-- <p>{{ file }}</p> -->
 </template>
 
-<style scoped></style>
+<style scoped>
+.fn {
+  color: #00677c;
+}
+</style>
