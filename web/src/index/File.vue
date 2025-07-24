@@ -32,23 +32,18 @@ watch(
 );
 defineProps<{}>();
 
-const msg = ref("some file");
-const file = ref({ path: "not load", content: { content: [{ tokens: [{ token: "empty", classes: [] }] }] } });
-
-// In a Vue component method or lifecycle hook (e.g., created or mounted)
-async function fetchData(path: URL) {
-  console.log("fetching data from", path);
-  try {
-    const response = await fetch(path); // Replace with your JSON URL
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const jsonData = await response.json();
-    return jsonData;
-  } catch (error) {
-    console.error("Error fetching JSON:", error);
+function makeLink(id: string, classes: string[]) {
+  let link = "";
+  if (classes.includes("fn")) {
+    let symbol = btoa(id);
+    link = `/symbol/${symbol}`;
   }
+  return link;
 }
+
+const msg = ref("some file");
+const file = ref({ path: "not load", content: { content: [{ tokens: [{ token: "empty", classes: [], id: "" }] }] } });
+
 </script>
 
 <template>
@@ -61,7 +56,21 @@ async function fetchData(path: URL) {
       </div>
     </el-col>
     <el-col :span="23">
-      <pre><span v-for="token in line.tokens" style="" :class="token.classes" ><span>{{ token.token }}</span></span></pre>
+      <span v-for="token in line.tokens">
+        <router-link v-if="makeLink(token.id, token.classes) !== ''" :to="makeLink(token.id, token.classes)"
+          style="text-decoration: none; color: inherit;">
+          <span style="white-space: pre;" :class="token.classes" :id="token.id"
+            @click="makeLink(token.id, token.classes)">
+            {{ token.token }}
+          </span>
+        </router-link>
+        <span v-else>
+          <span style="white-space: pre;" :class="token.classes" :id="token.id"
+            @click="makeLink(token.id, token.classes)">
+            {{ token.token }}
+          </span>
+        </span>
+      </span>
     </el-col>
   </el-row>
 </template>
