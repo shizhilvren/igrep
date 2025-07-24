@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
 import { ref, defineComponent, nextTick, onMounted, watch } from "vue";
+
+import { fetchJson } from "@/typescript/utils"; // Assuming you have a utility function to fetch data
+const projectRoot = "../.."
 const route = ref(useRoute());
 const router = ref(useRouter());
-
+const fileJsonPrefix = `${projectRoot}/index/file/`;
 onMounted(() => {
   console.log("onMounted");
 });
@@ -13,10 +16,10 @@ watch(
   () => route.value.params.pathMatch,
   (newPath) => {
     console.log("path changed", newPath);
-    let path = "../../index/" + newPath.join("/") + ".json";
+    let path = fileJsonPrefix + newPath.join("/") + ".json";
     console.log("path", path);
     const json_path: URL = new URL(path, import.meta.url);
-    fetchData(json_path).then((data) => {
+    fetchJson(json_path).then((data) => {
       console.log("data", data);
       file.value = data;
       nextTick().then(() => {

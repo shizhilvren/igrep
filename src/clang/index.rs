@@ -1,4 +1,4 @@
-use crate::clang::json::FileJson;
+use crate::clang::json::{FileJson, SymbolsJson};
 use anyhow::{Result, anyhow};
 use clang::{Clang, Entity, Index, Usr, source::SourceLocation};
 use regex_syntax::ast::print;
@@ -9,6 +9,9 @@ use std::{
     hash::Hash,
     path::Path,
 };
+
+const FILE_JSON_PREFIX: &str = "web/index/file/";
+const SYMBOL_JSON_PREFIX: &str = "web/index/symbol/";
 
 #[derive(Debug, Hash, Eq, PartialEq, PartialOrd)]
 pub(super) struct FileLocation {
@@ -314,12 +317,13 @@ pub fn main(file: &str, dir: &str, debug: bool) -> Result<()> {
     let json = FileJson::from_index(&index_result, file.to_string())?;
     let json = serde_json::to_string(&json)?;
     println!("JSON output: {}", json);
-    let file_path = format!("web/index/{}.json", file);
+    let file_path = format!("{}/{}.json", FILE_JSON_PREFIX, file);
     let path = std::path::Path::new(&file_path);
     let prefix = path.parent().unwrap();
     std::fs::create_dir_all(prefix).unwrap();
     let mut file_handle = fs::File::create(path)?;
     file_handle.write_all(json.as_bytes())?;
+    dump_symbols(&index_result)?;
     Ok(())
 }
 
@@ -359,4 +363,23 @@ fn dfs(entity: &Entity, debug: bool, ans: &mut IndexResult) {
     for child in entity.get_children() {
         dfs(&child, debug, ans);
     }
+}
+
+fn dump_symbols(index: &IndexResult) -> Result<()> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let symbols_json = SymbolsJson::from_index(index)?;
+    for symbol in symbols_json.symbols.iter() {
+        let json = serde_json::to_string(&symbol)?;
+        let file_path = format!(
+            "{}/{}.json",
+            SYMBOL_JSON_PREFIX,
+            STANDARD.encode(symbol.name.as_bytes())
+        );
+        let path = std::path::Path::new(&file_path);
+        let prefix = path.parent().unwrap();
+        std::fs::create_dir_all(prefix).unwrap();
+        let mut file_handle = fs::File::create(path)?;
+        file_handle.write_all(json.as_bytes())?;
+    }
+    Ok(())
 }

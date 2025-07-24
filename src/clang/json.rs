@@ -5,6 +5,25 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+
+pub struct SymbolsJson{
+    pub symbols: Vec<SymbolJson>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SymbolJson {
+    pub name: String,
+    pub definition: Vec<FileLineLink>,
+    pub declaration: Vec<FileLineLink>,
+    pub call: Vec<FileLineLink>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FileLineLink {
+    pub file: String,
+    pub line: u32,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct FileJson {
     pub path: String,
@@ -171,5 +190,49 @@ impl FileJson {
         let tokens = make_tokens(index)?;
         let file_json = split_one_file(file, tokens.clone())?;
         Ok(file_json)
+    }
+}
+
+
+impl SymbolsJson{
+    pub fn from_index(index: &IndexResult) -> Result<SymbolsJson> {
+        let mut symbols = Vec::new();
+        for (usr, fr) in index.get_functions() {
+            let name = usr.0.clone();
+            let mut definition = fr
+                .definitions()
+                .iter()
+                .map(|loc| FileLineLink {
+                    file: loc.file().to_string(),
+                    line: loc.loc().line(),
+                })
+                .collect::<Vec<_>>();
+            definition.sort_by_key(|x| (x.file.clone(), x.line));
+            let mut declaration = fr
+                .declarations()
+                .iter()
+                .map(|loc| FileLineLink {
+                    file: loc.file().to_string(),
+                    line: loc.loc().line(),
+                })
+                .collect::<Vec<_>>();
+            declaration.sort_by_key(|x| (x.file.clone(), x.line));
+            let mut call = fr
+                .calls()
+                .iter()
+                .map(|loc| FileLineLink {
+                    file: loc.file().to_string(),
+                    line: loc.loc().line(),
+                })
+                .collect::<Vec<_>>();
+            call.sort_by_key(|x| (x.file.clone(), x.line));
+            symbols.push(SymbolJson {
+                name,
+                definition,
+                declaration,
+                call,
+            });
+        }
+        Ok(SymbolsJson { symbols })
     }
 }
