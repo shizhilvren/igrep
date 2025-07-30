@@ -64,19 +64,25 @@ const symbol = ref({
   <h2 v-show="symbol.definition.length != 0">Definition: ({{ symbol.definition.length }})</h2>
   <el-row v-for="def in symbol.definition">
     <el-col :span="24">
-      <pre>{{ def.file }}:{{ def.line }}</pre>
+      <router-link :to="`/file/${def.file}#${def.line}`" style="text-decoration: none; color: inherit;">
+        <span>{{ def.file }}:{{ def.line }}</span>
+      </router-link>
     </el-col>
   </el-row>
   <h2 v-show="symbol.declaration.length != 0">Declaration: ({{ symbol.declaration.length }})</h2>
   <el-row v-for="decl in symbol.declaration">
     <el-col :span="24">
-      <pre>{{ decl.file }}:{{ decl.line }}</pre>
+      <router-link :to="`/file/${decl.file}#${decl.line}`" style="text-decoration: none; color: inherit;">
+        <span>{{ decl.file }}:{{ decl.line }}</span>
+      </router-link>
     </el-col>
   </el-row>
   <h2 v-show="symbol.call.length != 0">Call: ({{ symbol.call.length }})</h2>
   <el-row v-for="call in symbol.call">
     <el-col :span="24">
-      <pre>{{ call.file }}:{{ call.line }}</pre>
+      <router-link :to="`/file/${call.file}#${call.line}`" style="text-decoration: none; color: inherit;">
+        <span>{{ call.file }}:{{ call.line }}</span>
+      </router-link>
     </el-col>
   </el-row>
 </template>
