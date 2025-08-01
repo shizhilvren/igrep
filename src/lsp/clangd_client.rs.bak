@@ -1,0 +1,264 @@
+use anyhow::{Result, anyhow};
+use lsp_types::{
+    ClientCapabilities, CompletionParams, DidOpenTextDocumentParams, InitializeParams,
+    InitializeResult, InitializedParams, Position, TextDocumentClientCapabilities,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
+};
+use serde_json::Value;
+use std::{
+    io::{BufRead, BufReader, Read, Write},
+    path::Path,
+    process::{Child, Command, Stdio},
+    str::FromStr,
+};
+
+/// A simple LSP client for interacting with clangd
+pub struct ClangdClient {
+    server_process: Child,
+    request_id: i64,
+}
+
+impl ClangdClient {
+    /// Start a new clangd server process and initialize the LSP connection
+    pub fn new(log_path: &String) -> Result<Self> {
+        let log_file = std::fs::File::create(log_path)?;
+        // Start clangd process
+        let child = Command::new("clangd")
+            .arg("--log=verbose")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(log_file)
+            .spawn()?;
+
+        println!("clangd server started with PID: {}", child.id());
+
+        let mut client = ClangdClient {
+            server_process: child,
+            request_id: 0,
+        };
+
+        // Initialize the LSP connection
+        client.initialize()?;
+
+        Ok(client)
+    }
+
+    /// Start clangd with specific compile commands directory
+    pub fn with_compile_commands(compile_commands_dir: &str) -> Result<Self> {
+        // Start clangd process with compilation database
+        let mut child = Command::new("clangd")
+            .arg("--log=verbose")
+            .arg(format!("--compile-commands-dir={}", compile_commands_dir))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let mut client = ClangdClient {
+            server_process: child,
+            request_id: 0,
+        };
+
+        // Initialize the LSP connection
+        client.initialize()?;
+
+        Ok(client)
+    }
+
+    /// Send the initialize request to the server
+    fn initialize(&mut self) -> Result<InitializeResult> {
+        // Prepare initialize parameters
+        let params = InitializeParams {
+            process_id: Some(std::process::id()),
+            client_info: Some(lsp_types::ClientInfo {
+                name: "igrep-clangd-client".to_string(),
+                version: Some("0.1.0".to_string()),
+            }),
+            capabilities: ClientCapabilities {
+                text_document: Some(TextDocumentClientCapabilities {
+                    completion: Some(lsp_types::CompletionClientCapabilities::default()),
+                    hover: Some(lsp_types::HoverClientCapabilities::default()),
+                    definition: Some(lsp_types::GotoCapability::default()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            initialization_options: None,
+            trace: Some(lsp_types::TraceValue::Verbose),
+            workspace_folders: None,
+            ..Default::default()
+        };
+
+        // Send initialize request
+        let result: InitializeResult = self.send_request("initialize", params)?;
+
+        // Send initialized notification
+        self.send_notification("initialized", InitializedParams {})?;
+
+        Ok(result)
+    }
+
+    /// Open a file in the LSP server
+    pub fn open_file(&mut self, file_path: &str, content: String) -> Result<()> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "cpp".to_string(), // or "c" depending on file type
+                version: 1,
+                text: content,
+            },
+        };
+
+        self.send_notification("textDocument/didOpen", params)
+    }
+
+    /// Get code completion suggestions at a position in a file
+    pub fn get_completions(&mut self, file_path: &str, line: u32, character: u32) -> Result<Value> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position { line, character },
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: None,
+        };
+
+        self.send_request("textDocument/completion", params)
+    }
+
+    /// Go to definition of symbol at position
+    pub fn goto_definition(&mut self, file_path: &str, line: u32, character: u32) -> Result<Value> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri },
+            position: Position { line, character },
+        };
+
+        self.send_request("textDocument/definition", params)
+    }
+
+    /// Get hover information at a position in a file
+    pub fn get_hover(&mut self, file_path: &str, line: u32, character: u32) -> Result<Value> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri },
+            position: Position { line, character },
+        };
+
+        self.send_request("textDocument/hover", params)
+    }
+
+    /// Send a request to the LSP server and parse the response
+    fn send_request<P: serde::Serialize, R: serde::de::DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: P,
+    ) -> Result<R> {
+        self.request_id += 1;
+        let id = self.request_id;
+
+        // Create request JSON
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+
+        // Serialize and send the request
+        let request_str = serde_json::to_string(&request)?;
+        let content_length = request_str.len();
+        let header = format!("Content-Length: {}\r\n\r\n", content_length);
+
+        let stdin = self
+            .server_process
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("Failed to get stdin"))?;
+        stdin.write_all(header.as_bytes())?;
+        stdin.write_all(request_str.as_bytes())?;
+        stdin.flush()?;
+
+        // Read and parse the response
+        let stdout = self
+            .server_process
+            .stdout
+            .as_mut()
+            .ok_or_else(|| anyhow!("Failed to get stdout"))?;
+        let mut reader = BufReader::new(stdout);
+
+        // Read headers
+        let mut content_length = None;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            reader.read_line(&mut line)?;
+            // println!("LSP Response Header: {}", line.trim());
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if line.starts_with("Content-Length: ") {
+                content_length = Some(line["Content-Length: ".len()..].trim().parse::<usize>()?);
+            }
+        }
+
+        // Read the response body
+        let content_length = content_length.ok_or_else(|| anyhow!("No Content-Length header"))?;
+        let mut buffer = vec![0; content_length];
+        reader.read_exact(&mut buffer)?;
+        // println!("LSP Response Body: {}", String::from_utf8_lossy(&buffer));
+
+        // Parse the response
+        let response: serde_json::Value = serde_json::from_slice(&buffer)?;
+
+        // Check for errors
+        if let Some(error) = response.get("error") {
+            return Err(anyhow!("LSP error: {}", error));
+        }
+
+        // Extract and deserialize result
+        let result = response["result"].clone();
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// Send a notification to the LSP server (no response expected)
+    fn send_notification<P: serde::Serialize>(&mut self, method: &str, params: P) -> Result<()> {
+        // Create notification JSON
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        });
+
+        // Serialize and send the notification
+        let notification_str = serde_json::to_string(&notification)?;
+        let content_length = notification_str.len();
+        let header = format!("Content-Length: {}\r\n\r\n", content_length);
+
+        let stdin = self
+            .server_process
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("Failed to get stdin"))?;
+        stdin.write_all(header.as_bytes())?;
+        stdin.write_all(notification_str.as_bytes())?;
+        stdin.flush()?;
+
+        Ok(())
+    }
+}
+
+impl Drop for ClangdClient {
+    fn drop(&mut self) {
+        // Try to gracefully shut down the server
+        let _ = self.send_notification("exit", serde_json::Value::Null);
+        let _ = self.server_process.kill();
+    }
+}

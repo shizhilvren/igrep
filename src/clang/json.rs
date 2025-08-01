@@ -1,4 +1,3 @@
-use crate::clang::index::{FileLocation, FunctionResult, OneFileLocation};
 use anyhow::{Result, anyhow};
 // use clang::Usr;
 use serde::{Deserialize, Serialize};

@@ -4,6 +4,7 @@ mod config;
 mod data;
 mod encode;
 mod index;
+mod lsp;
 mod range;
 mod search;
 
@@ -81,6 +82,15 @@ struct ClangIndexArgs {
     #[arg(long, required = true)]
     project_dir: String,
 
+    #[arg(long, required = true)]
+    log: String,
+
+    #[arg(long, required = true)]
+    line: u32,
+
+    #[arg(long, required = true)]
+    column: u32,
+
     #[arg(long, default_value_t = false)]
     debug: bool,
 }
@@ -97,7 +107,15 @@ fn main() -> Result<()> {
         Commands::Search(args) => run_search(args, cli.verbose),
         Commands::ClangIndex(args) => {
             // Call the Clang indexing logic with the provided file
-            clang::index::main(&args.file, &args.project_dir, args.debug)
+            clang::clangd_lsp_client::main(
+                &args.file,
+                &args.project_dir,
+                args.debug,
+                args.line,
+                args.column,
+                args.log.clone(),
+            )
+            .map_err(|e| anyhow!("Failed to run Clang index: {}", e))
         }
     }
 }
