@@ -1,9 +1,10 @@
 use anyhow::{Result, anyhow};
+use futures::io::Window;
 use lsp_types::{
     ClientCapabilities, CompletionParams, DidOpenTextDocumentParams, DocumentSymbolParams,
     InitializeParams, InitializeResult, InitializedParams, Position,
     TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri,
+    TextDocumentPositionParams, Uri, WindowClientCapabilities,
 };
 use serde_json::Value;
 use std::{
@@ -28,39 +29,23 @@ pub struct ASTParams {
 
 impl ClangdClient {
     /// Start a new clangd server process and initialize the LSP connection
-    pub fn new(log_path: &String) -> Result<Self> {
+    pub fn new(log_path: &String, compile_commands_dir: &str, debug: bool) -> Result<Self> {
         let log_file = std::fs::File::create(log_path)?;
+        let log_level = match debug {
+            true => "verbose",
+            false => "info",
+        };
         // Start clangd process
         let child = Command::new("clangd")
-            .arg("--log=verbose")
+            .arg(format!("--compile-commands-dir={}", compile_commands_dir))
+            .arg(format!("--log={}", log_level))
+            .arg("--background-index")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(log_file)
             .spawn()?;
 
         println!("clangd server started with PID: {}", child.id());
-
-        let mut client = ClangdClient {
-            server_process: child,
-            request_id: 0,
-        };
-
-        // Initialize the LSP connection
-        client.initialize()?;
-
-        Ok(client)
-    }
-
-    /// Start clangd with specific compile commands directory
-    pub fn with_compile_commands(compile_commands_dir: &str) -> Result<Self> {
-        // Start clangd process with compilation database
-        let mut child = Command::new("clangd")
-            .arg("--log=verbose")
-            .arg(format!("--compile-commands-dir={}", compile_commands_dir))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
 
         let mut client = ClangdClient {
             server_process: child,
@@ -197,11 +182,11 @@ impl ClangdClient {
                 ..Default::default()
             }),
 
-            // 工作区功能
-            workspace: None,
-
             // 窗口功能
-            window: None,
+            window: Some(lsp_types::WindowClientCapabilities {
+                work_done_progress: Some(true),
+                ..Default::default()
+            }),
 
             ..Default::default()
         };
@@ -256,16 +241,20 @@ impl ClangdClient {
         self.send_request("textDocument/codeLens", params)
     }
 
-
-
     pub fn get_ast(&mut self, file_path: &str) -> Result<Value> {
         let uri = Uri::from_str(&format!("file://{}", file_path))?;
 
         let params = ASTParams {
             text_document: TextDocumentIdentifier { uri },
             range: lsp_types::Range {
-                start: lsp_types::Position { line: 0, character: 0 },
-                end: lsp_types::Position { line: 0, character: 1 },
+                start: lsp_types::Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: lsp_types::Position {
+                    line: 0,
+                    character: 1,
+                },
             },
         };
 

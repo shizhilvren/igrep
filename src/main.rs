@@ -78,9 +78,9 @@ struct ClangIndexArgs {
     /// Sets the file to be indexed
     #[arg(required = true)]
     file: String,
-    /// Sets the file to be indexed
+    
     #[arg(long, required = true)]
-    project_dir: String,
+    compile_commands_dir: String,
 
     #[arg(long, required = true)]
     log: String,
@@ -109,11 +109,11 @@ fn main() -> Result<()> {
             // Call the Clang indexing logic with the provided file
             clang::clangd_lsp_client::main(
                 &args.file,
-                &args.project_dir,
                 args.debug,
                 args.line,
                 args.column,
                 args.log.clone(),
+                &args.compile_commands_dir,
             )
             .map_err(|e| anyhow!("Failed to run Clang index: {}", e))
         }

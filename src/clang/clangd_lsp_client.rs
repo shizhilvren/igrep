@@ -4,17 +4,19 @@ use std::{fs, thread::sleep, time::Duration};
 
 pub fn main(
     file_path: &str,
-    project_dir: &str,
     debug: bool,
     line: u32,
     column: u32,
     log_file: String,
+    compile_commands_dir: &str,
 ) -> Result<()> {
     // 初始化客户端，连接到本地运行的 clangd 服务器
     println!("正在连接到 clangd 服务器...");
-    let mut client = ClangdClient::new(&log_file)?;
+    let mut client = ClangdClient::new(&log_file, compile_commands_dir, debug)?;
     println!("已连接到 clangd 服务器");
 
+    let file_path = fs::canonicalize(file_path)?;
+    let file_path = file_path.to_str().unwrap();
     let file_content = fs::read_to_string(file_path)?;
 
     // 在 LSP 服务器中打开文件
@@ -70,25 +72,25 @@ pub fn main(
         Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
-        // 获取定义
+    // 获取定义
     println!("\n=== 定义位置 ===");
     match client.goto_definition(file_path, line, column) {
         Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
-        // 获取定义
+    // 获取定义
     println!("\n=== 定义位置 ===");
     match client.goto_definition(file_path, line, column) {
         Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
-        // 获取定义
+    // 获取定义
     println!("\n=== 定义位置 ===");
     match client.goto_definition(file_path, line, column) {
         Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
-        // 获取定义
+    // 获取定义
     println!("\n=== 定义位置 ===");
     match client.goto_definition(file_path, line, column) {
         Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
