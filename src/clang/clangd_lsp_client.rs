@@ -97,7 +97,7 @@ pub fn main(
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
 
-    sleep(Duration::from_secs(600)); // 等待一段时间以确保所有输出都能显示
+    let a:() = client.reader(-1)?;
     println!("\nLSP 客户端示例运行完成");
 
     Ok(())

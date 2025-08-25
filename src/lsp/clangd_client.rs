@@ -6,6 +6,7 @@ use lsp_types::{
     TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri, WindowClientCapabilities,
 };
+use regex_syntax::ast::print;
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -40,6 +41,8 @@ impl ClangdClient {
             .arg(format!("--compile-commands-dir={}", compile_commands_dir))
             .arg(format!("--log={}", log_level))
             .arg("--background-index")
+            .arg("--pch-storage=memory")
+            .args(["-j","60"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(log_file)
@@ -356,46 +359,59 @@ impl ClangdClient {
         stdin.write_all(request_str.as_bytes())?;
         stdin.flush()?;
 
-        // Read and parse the response
-        let stdout = self
-            .server_process
-            .stdout
-            .as_mut()
-            .ok_or_else(|| anyhow!("Failed to get stdout"))?;
-        let mut reader = BufReader::new(stdout);
-
-        // Read headers
-        let mut content_length = None;
-        let mut line = String::new();
-        loop {
-            line.clear();
-            reader.read_line(&mut line)?;
-            if line == "\r\n" || line.is_empty() {
-                break;
-            }
-            if line.starts_with("Content-Length: ") {
-                content_length = Some(line["Content-Length: ".len()..].trim().parse::<usize>()?);
-            }
-        }
-
-        // Read the response body
-        let content_length = content_length.ok_or_else(|| anyhow!("No Content-Length header"))?;
-        let mut buffer = vec![0; content_length];
-        reader.read_exact(&mut buffer)?;
-
-        // Parse the response
-        let response: serde_json::Value = serde_json::from_slice(&buffer)?;
-
-        // Check for errors
-        if let Some(error) = response.get("error") {
-            return Err(anyhow!("LSP error: {}", error));
-        }
-
-        // Extract and deserialize result
-        let result = response["result"].clone();
-        Ok(serde_json::from_value(result)?)
+        self.reader(id)
     }
 
+    pub fn reader<R: serde::de::DeserializeOwned>(&mut self, id: i64) -> Result<R> {
+        // Read and parse the response
+
+        loop {
+            let stdout = self
+                .server_process
+                .stdout
+                .as_mut()
+                .ok_or_else(|| anyhow!("Failed to get stdout"))?;
+            let mut reader = BufReader::new(stdout);
+            // Read headers
+            let mut content_length = None;
+            let mut line = String::new();
+            loop {
+                line.clear();
+                reader.read_line(&mut line)?;
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+                if line.starts_with("Content-Length: ") {
+                    content_length =
+                        Some(line["Content-Length: ".len()..].trim().parse::<usize>()?);
+                }
+            }
+
+            // Read the response body
+            let content_length =
+                content_length.ok_or_else(|| anyhow!("No Content-Length header"))?;
+            let mut buffer = vec![0; content_length];
+            reader.read_exact(&mut buffer)?;
+
+            // Parse the response
+            let response: serde_json::Value = serde_json::from_slice(&buffer)?;
+
+            // Check for errors
+            if let Some(error) = response.get("error") {
+                return Err(anyhow!("LSP error: {}", error));
+            }
+
+            // Extract and deserialize result
+            let result = response["result"].clone();
+            let id_result = response["id"].clone();
+            if id_result == id {
+                return Ok(serde_json::from_value(result)?);
+            } else {
+                self.handle_other_response(response)?;
+            }
+        }
+        Err(anyhow!("No response found"))
+    }
     /// Send a notification to the LSP server (no response expected)
     fn send_notification<P: serde::Serialize>(&mut self, method: &str, params: P) -> Result<()> {
         // Create notification JSON
@@ -419,6 +435,61 @@ impl ClangdClient {
         stdin.write_all(notification_str.as_bytes())?;
         stdin.flush()?;
 
+        Ok(())
+    }
+    fn send_response<P: serde::Serialize>(&mut self, id: i64, result: P) -> Result<()> {
+        // Create notification JSON
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id":id,
+            "result": result
+        });
+
+        // Serialize and send the notification
+        let notification_str = serde_json::to_string(&notification)?;
+        let content_length = notification_str.len();
+        let header = format!("Content-Length: {}\r\n\r\n", content_length);
+
+        let stdin = self
+            .server_process
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("Failed to get stdin"))?;
+        stdin.write_all(header.as_bytes())?;
+        stdin.write_all(notification_str.as_bytes())?;
+        stdin.flush()?;
+
+        Ok(())
+    }
+
+    fn handle_other_response(&mut self, response: serde_json::Value) -> Result<()> {
+        println!("Received other response: {}", response);
+        let method = response
+            .get("method")
+            .and_then(|m| m.as_str())
+            .unwrap_or("");
+        let parse = response.get("params").cloned().unwrap_or(Value::Null);
+        let id = response.get("id").and_then(|m| m.as_i64()).unwrap_or(-1);
+        match method {
+            "window/workDoneProgress/create" => {
+                let params: lsp_types::WorkDoneProgressCreateParams =
+                    serde_json::from_value(parse)?;
+                match params.token {
+                    lsp_types::ProgressToken::String(token) => {
+                        println!("Progress created with token: {}", token);
+                        self.send_response(id, Value::Null)?;
+                    }
+                    lsp_types::ProgressToken::Number(token) => {
+                        println!("Progress created with token: {}", token);
+                    }
+                }
+            }
+            _ => {
+                // Unknown notification
+                println!("Unknown notification: {}", response);
+            }
+        }
+        // Handle other types of responses
         Ok(())
     }
 }
