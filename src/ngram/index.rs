@@ -1,7 +1,8 @@
-pub struct NgramIndex{
+pub struct NgramIndex {
     ngaram: Box<[u8]>,
 }
 
+#[derive(Debug)]
 pub struct FileIndex {
     file_id: u32,
 }
@@ -26,4 +27,10 @@ pub struct FilesLinesIndex {
 pub struct FileLineIndex {
     file_id: FileIndex,
     line_id: LineIndex,
+}
+
+impl From<u32> for FileIndex {
+    fn from(value: u32) -> Self {
+        FileIndex { file_id: value }
+    }
 }
