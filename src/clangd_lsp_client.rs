@@ -1,5 +1,7 @@
-use crate::lsp::clangd_client::ClangdClient;
-use anyhow::Result;
+// use igrep::lsp::ClangdClient;
+use igrep::lsp::clangd_client::ClangdClient;
+
+use anyhow::{Result, anyhow};
 use std::{fs, thread::sleep, time::Duration};
 
 pub fn main(
@@ -32,11 +34,6 @@ pub fn main(
         Err(e) => println!("获取悬停信息时出错: {}", e),
     }
 
-    match client.get_code_lens(file_path, line, column) {
-        Ok(codelens) => println!("{}", serde_json::to_string_pretty(&codelens)?),
-        Err(e) => println!("获取 CodeLens 时出错: {}", e),
-    }
-
     // 获取 AST
     match client.get_ast(file_path) {
         Ok(ast) => println!("{}", serde_json::to_string_pretty(&ast)?),
@@ -58,6 +55,8 @@ pub fn main(
     }
 
     // 获取语义标记
+    println!("\n=== 语义标记 ===");
+
     match client.get_semantic_tokens_full(file_path) {
         Ok(tokens) => println!("{}", serde_json::to_string_pretty(&tokens)?),
         Err(e) => println!("获取语义标记时出错: {}", e),

@@ -129,6 +129,7 @@ impl ClangdClient {
 
                 // 语义标记功能
                 semantic_tokens: Some(lsp_types::SemanticTokensClientCapabilities {
+                    augments_syntax_tokens: Some(true),
                     dynamic_registration: Some(true),
                     requests: lsp_types::SemanticTokensClientCapabilitiesRequests {
                         range: None,
@@ -139,17 +140,18 @@ impl ClangdClient {
                         lsp_types::SemanticTokenType::NAMESPACE,
                         lsp_types::SemanticTokenType::TYPE,
                         lsp_types::SemanticTokenType::CLASS,
+                        lsp_types::SemanticTokenType::ENUM,
                         lsp_types::SemanticTokenType::INTERFACE,
                         lsp_types::SemanticTokenType::STRUCT,
                         lsp_types::SemanticTokenType::TYPE_PARAMETER,
                         lsp_types::SemanticTokenType::PARAMETER,
                         lsp_types::SemanticTokenType::VARIABLE,
                         lsp_types::SemanticTokenType::PROPERTY,
-                        lsp_types::SemanticTokenType::ENUM,
                         lsp_types::SemanticTokenType::ENUM_MEMBER,
                         lsp_types::SemanticTokenType::EVENT,
                         lsp_types::SemanticTokenType::FUNCTION,
                         lsp_types::SemanticTokenType::METHOD,
+                        lsp_types::SemanticTokenType::MACRO,
                         lsp_types::SemanticTokenType::KEYWORD,
                         lsp_types::SemanticTokenType::MODIFIER,
                         lsp_types::SemanticTokenType::COMMENT,
@@ -157,6 +159,7 @@ impl ClangdClient {
                         lsp_types::SemanticTokenType::NUMBER,
                         lsp_types::SemanticTokenType::REGEXP,
                         lsp_types::SemanticTokenType::OPERATOR,
+                        lsp_types::SemanticTokenType::DECORATOR,
                     ],
                     token_modifiers: vec![
                         lsp_types::SemanticTokenModifier::DECLARATION,
@@ -164,14 +167,15 @@ impl ClangdClient {
                         lsp_types::SemanticTokenModifier::READONLY,
                         lsp_types::SemanticTokenModifier::STATIC,
                         lsp_types::SemanticTokenModifier::DEPRECATED,
+                        lsp_types::SemanticTokenModifier::ABSTRACT,
                         lsp_types::SemanticTokenModifier::ASYNC,
                         lsp_types::SemanticTokenModifier::MODIFICATION,
                         lsp_types::SemanticTokenModifier::DOCUMENTATION,
                         lsp_types::SemanticTokenModifier::DEFAULT_LIBRARY,
                     ],
                     formats: vec![lsp_types::TokenFormat::RELATIVE],
-                    overlapping_token_support: Some(true),
-                    multiline_token_support: Some(true),
+                    overlapping_token_support: Some(false),
+                    multiline_token_support: Some(false),
 
                     ..Default::default()
                 }),
