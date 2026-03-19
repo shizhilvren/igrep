@@ -16,7 +16,7 @@ watch(
   () => route.value.params.pathMatch,
   (newPath) => {
     console.log("path changed", newPath);
-    let path = fileJsonPrefix + newPath.join("/") + ".json";
+    let path = fileJsonPrefix + newPath + ".json";
     console.log("path", path);
     const json_path: URL = new URL(path, import.meta.url);
     fetchJson(json_path).then((data) => {
