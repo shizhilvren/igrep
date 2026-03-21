@@ -1,10 +1,17 @@
-use crate::ngram::index::{
-    FileIndex, FileLinesIndex, FilesLinesIndex, LineIndex, LinesIndex, NgramIndex, NgramIndexVec,
+use crate::ngram::data::NgramData;
+use crate::ngram::{
+    self,
+    index::{
+        FileIndex, FileLinesIndex, FilesLinesIndex, LineIndex, LinesIndex, NgramIndex,
+        NgramIndexVec,
+    },
+    path::NgramPath,
 };
 use anyhow::{Error, Result, anyhow};
 use bincode::de;
 use log::info;
 use rayon::prelude::*;
+use std::path::Path;
 use std::{collections::HashMap, default};
 
 pub struct Builder {
@@ -35,8 +42,8 @@ pub struct BuilderOneIndex {
     file_content: FileContent,
     ngram_to_line: HashMap<NgramIndex, Vec<LineIndex>>,
 }
-impl Builder{
-        pub fn new(ngram_len: u8) -> Result<Self, Error> {
+impl Builder {
+    pub fn new(ngram_len: u8) -> Result<Self, Error> {
         if ngram_len < 3 {
             return Err(anyhow!("Ngram length cannot be less than 3",));
         } else if ngram_len > 10 {
@@ -51,17 +58,28 @@ impl Builder{
     }
 
     pub fn index(&mut self, file_builder: FileIndexFinalBuilder) -> Result<()> {
+        info!("start index files...");
         let all_builders = file_builder
             .files
-            .into_iter()
+            .into_par_iter()
             .map(|(file_id, file_content)| self.index_one(file_id, file_content))
             .collect::<Vec<_>>();
-        info!("all file index finish.");
+        info!("all file index finish. Start merging...");
         self.merge(all_builders)?;
         info!("all file merge finish.");
         Ok(())
     }
-    
+
+    pub fn dump(&self, base_path: &Path) -> Result<()> {
+        self.ngram_to_files_lines
+            .iter()
+            .try_for_each(|(ngram, files_lines)| {
+                let ngarm_data = NgramData::from(files_lines.clone());
+                let ngram_path = NgramPath::from((ngram, &ngarm_data));
+                ngram_path.dump(base_path)
+            })?;
+        Ok(())
+    }
 }
 
 impl Builder {
@@ -170,6 +188,7 @@ impl From<String> for AbsPath {
 impl TryFrom<FileIndexBuilder> for FileIndexFinalBuilder {
     type Error = Error;
     fn try_from(builder: FileIndexBuilder) -> Result<Self, Self::Error> {
+        info!("start reading files.");
         let files = builder
             .file_to_id
             .into_par_iter()

@@ -15,7 +15,6 @@ use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     range::Offset,
 };
-use rkyv::{Archive, Deserialize, Serialize, deserialize, rancor::Error};
 
 use log::{error, info, warn};
 
@@ -25,6 +24,8 @@ use colored::Colorize;
 use rayon::prelude::*;
 
 use std::fs;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::{
     io::{BufRead, Read, Seek},
     path::Path,
@@ -129,19 +130,7 @@ fn main() -> Result<()> {
 }
 
 
-#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
-#[rkyv(
-    // This will generate a PartialEq impl between our unarchived
-    // and archived types
-    compare(PartialEq),
-    // Derives can be passed through to the generated type:
-    derive(Debug),
-)]
-struct Test {
-    int: u8,
-    string: String,
-    option: Option<Vec<i32>>,
-}
+
 fn run_index_new(args: IndexArgs, verbose: bool) -> Result<()> {
     env_logger::init();
     // 读取文件列表
@@ -158,34 +147,8 @@ fn run_index_new(args: IndexArgs, verbose: bool) -> Result<()> {
     file_builder.build(files_list)?;
     let mut builder = crate::ngram::builder::Builder::new(args.ngram)?;
     builder.index(FileIndexFinalBuilder::try_from(file_builder)?)?;
-
-    let value = Test {
-        int: 42,
-        string: "hello world".to_string(),
-        option: Some(vec![1, 2, 3, 4]),
-    };
-
-    // Serializing is as easy as a single function call
-    let _bytes = rkyv::to_bytes::<Error>(&value).unwrap();
-
-    // Or you can customize your serialization for better performance or control
-    // over resource usage
-    use rkyv::{api::high::to_bytes_with_alloc, ser::allocator::Arena};
-
-    let mut arena = Arena::new();
-    let bytes = to_bytes_with_alloc::<_, Error>(&value, arena.acquire()).unwrap();
-
-    // You can use the safe API for fast zero-copy deserialization
-    let archived = rkyv::access::<ArchivedTest, Error>(&bytes[..]).unwrap();
-    assert_eq!(archived, &value);
-
-    // Or you can use the unsafe API for maximum performance
-    let archived = unsafe { rkyv::access_unchecked::<ArchivedTest>(&bytes[..]) };
-    assert_eq!(archived, &value);
-
-    // And you can always deserialize back to the original type
-    let deserialized = deserialize::<Test, Error>(archived).unwrap();
-    assert_eq!(deserialized, value);
+    let base_path = &PathBuf::from_str(args.config.as_str())?;
+    builder.dump(base_path.as_path())?;
     Ok(())
 }
 fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {

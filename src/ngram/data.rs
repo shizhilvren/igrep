@@ -1,6 +1,7 @@
 use crate::ngram::index::{FileIndex, FileLineIndex, FilesLinesIndex, LineIndex, NgramIndex};
 use crate::ngram::path::{FileLinePath, FilePath, NgramPath};
-use rkyv::{Archive, Deserialize, Serialize, deserialize, rancor, rancor::Error};
+use anyhow::{Result, anyhow};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub struct GlobalData<'a> {
@@ -15,26 +16,37 @@ pub struct FileData {
     lines_paths: HashMap<LineIndex, FileLinePath>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct NgramData {
     files_lines: FilesLinesIndex,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct FileLineData {
     data: Vec<u8>,
 }
 
-pub trait FromToData<'a>
-where
-    Self: Serialize<
-        rkyv::api::high::HighSerializer<
-            rkyv::util::AlignedVec,
-            rkyv::ser::allocator::ArenaHandle<'a>,
-            Error,
-        >,
-    >,
-{
-    fn to_data(&self) -> Result<Vec<u8>, Error> {
-        let bytes = rkyv::to_bytes::<Error>(&self)?;
-        Ok(bytes)
+impl From<FilesLinesIndex> for NgramData {
+    fn from(value: FilesLinesIndex) -> Self {
+        NgramData { files_lines: value }
+    }
+}
+
+impl FromToData<'_> for NgramData {}
+
+pub trait FromToData<'a> {
+    fn to_data(&self) -> Result<Vec<u8>>
+    where
+        Self: Serialize,
+    {
+        let ret = postcard::to_stdvec(&self)?;
+        Ok(ret)
+    }
+    fn from_data(data: &'a [u8]) -> Result<Self>
+    where
+        Self: Deserialize<'a>,
+    {
+        let ans = postcard::from_bytes(data)?;
+        Ok(ans)
     }
 }

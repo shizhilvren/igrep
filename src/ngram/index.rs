@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{ops::Deref, str::FromStr};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -7,29 +8,30 @@ pub struct NgramIndex {
 
 pub struct NgramIndexVec(pub Vec<NgramIndex>);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
 
 pub struct FileIndex {
     file_id: u32,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct LineIndex {
     line: u32,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct LinesIndex {
     lines_id: Vec<LineIndex>,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct FileLinesIndex {
     file_id: FileIndex,
     lines_id: LinesIndex,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+
 pub struct FilesLinesIndex {
     files_lines_id: Vec<FileLinesIndex>,
 }
@@ -38,6 +40,12 @@ pub struct FilesLinesIndex {
 pub struct FileLineIndex {
     file_id: FileIndex,
     line_id: LineIndex,
+}
+
+impl NgramIndex {
+    pub fn get_ngrams(&self) -> &[u8] {
+        &self.ngaram
+    }
 }
 
 impl From<u32> for FileIndex {
