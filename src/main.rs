@@ -5,14 +5,19 @@ mod data;
 mod encode;
 mod index;
 mod lsp;
+mod ngram;
 mod range;
 mod search;
 
+use crate::ngram::builder::FileIndexFinalBuilder;
 use crate::search::{Engine, FileDataMatchRange, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     range::Offset,
 };
+use rkyv::{Archive, Deserialize, Serialize, deserialize, rancor::Error};
+
+use log::{error, info, warn};
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
@@ -42,6 +47,8 @@ struct Cli {
 enum Commands {
     /// Index files for faster searching
     Index(IndexArgs),
+    /// Index files for faster searching
+    IndexNew(IndexArgs),
     /// Search through indexed files
     Search(SearchArgs),
     ClangIndex(ClangIndexArgs),
@@ -78,7 +85,7 @@ struct ClangIndexArgs {
     /// Sets the file to be indexed
     #[arg(required = true)]
     file: String,
-    
+
     #[arg(long, required = true)]
     compile_commands_dir: String,
 
@@ -104,6 +111,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Index(args) => run_index(args, cli.verbose),
+        Commands::IndexNew(args) => run_index_new(args, cli.verbose),
         Commands::Search(args) => run_search(args, cli.verbose),
         Commands::ClangIndex(args) => {
             // Call the Clang indexing logic with the provided file
@@ -120,6 +128,66 @@ fn main() -> Result<()> {
     }
 }
 
+
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+#[rkyv(
+    // This will generate a PartialEq impl between our unarchived
+    // and archived types
+    compare(PartialEq),
+    // Derives can be passed through to the generated type:
+    derive(Debug),
+)]
+struct Test {
+    int: u8,
+    string: String,
+    option: Option<Vec<i32>>,
+}
+fn run_index_new(args: IndexArgs, verbose: bool) -> Result<()> {
+    env_logger::init();
+    // 读取文件列表
+    let file_content = fs::read(args.file_list.clone())?;
+    let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
+        .lines()
+        .filter_map(Result::ok)
+        .filter(|file| !file.is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+    let total_files = files_list.len();
+    info!("Total files to index: {}", total_files);
+    let mut file_builder = crate::ngram::builder::FileIndexBuilder::new();
+    file_builder.build(files_list)?;
+    let mut builder = crate::ngram::builder::Builder::new(args.ngram)?;
+    builder.index(FileIndexFinalBuilder::try_from(file_builder)?)?;
+
+    let value = Test {
+        int: 42,
+        string: "hello world".to_string(),
+        option: Some(vec![1, 2, 3, 4]),
+    };
+
+    // Serializing is as easy as a single function call
+    let _bytes = rkyv::to_bytes::<Error>(&value).unwrap();
+
+    // Or you can customize your serialization for better performance or control
+    // over resource usage
+    use rkyv::{api::high::to_bytes_with_alloc, ser::allocator::Arena};
+
+    let mut arena = Arena::new();
+    let bytes = to_bytes_with_alloc::<_, Error>(&value, arena.acquire()).unwrap();
+
+    // You can use the safe API for fast zero-copy deserialization
+    let archived = rkyv::access::<ArchivedTest, Error>(&bytes[..]).unwrap();
+    assert_eq!(archived, &value);
+
+    // Or you can use the unsafe API for maximum performance
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedTest>(&bytes[..]) };
+    assert_eq!(archived, &value);
+
+    // And you can always deserialize back to the original type
+    let deserialized = deserialize::<Test, Error>(archived).unwrap();
+    assert_eq!(deserialized, value);
+    Ok(())
+}
 fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     // 读取文件列表
     let file_content = fs::read(args.file_list.clone())?;

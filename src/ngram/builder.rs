@@ -3,6 +3,7 @@ use crate::ngram::index::{
 };
 use anyhow::{Error, Result, anyhow};
 use bincode::de;
+use log::info;
 use rayon::prelude::*;
 use std::{collections::HashMap, default};
 
@@ -34,9 +35,8 @@ pub struct BuilderOneIndex {
     file_content: FileContent,
     ngram_to_line: HashMap<NgramIndex, Vec<LineIndex>>,
 }
-
-impl Builder {
-    pub fn new(ngram_len: u8) -> Result<Self, Error> {
+impl Builder{
+        pub fn new(ngram_len: u8) -> Result<Self, Error> {
         if ngram_len < 3 {
             return Err(anyhow!("Ngram length cannot be less than 3",));
         } else if ngram_len > 10 {
@@ -44,13 +44,28 @@ impl Builder {
         } else {
             Ok(Self {
                 ngram_len,
-                ngram_to_file_line: Vec::new(),
-                file_id_to_content: Vec::new(),
+                ngram_to_files_lines: HashMap::new(),
+                file_id_to_content: HashMap::new(),
             })
         }
     }
 
-    fn index(&self, file_id: FileIndex, file_content: FileContent) -> BuilderOneIndex {
+    pub fn index(&mut self, file_builder: FileIndexFinalBuilder) -> Result<()> {
+        let all_builders = file_builder
+            .files
+            .into_iter()
+            .map(|(file_id, file_content)| self.index_one(file_id, file_content))
+            .collect::<Vec<_>>();
+        info!("all file index finish.");
+        self.merge(all_builders)?;
+        info!("all file merge finish.");
+        Ok(())
+    }
+    
+}
+
+impl Builder {
+    fn index_one(&self, file_id: FileIndex, file_content: FileContent) -> BuilderOneIndex {
         let mut ngram_to_file_line: HashMap<NgramIndex, Vec<LineIndex>> = HashMap::new();
         file_content
             .lines
@@ -73,15 +88,8 @@ impl Builder {
         }
     }
     fn merge(&mut self, file_index_to_content_ngram: Vec<BuilderOneIndex>) -> Result<()> {
-        let mut ngram_to_file_line: HashMap<NgramIndex, Vec<(FileIndex, LineIndex)>> =
-            HashMap::new();
-        // file_index_to_content_ngram.iter().try_for_each(|BuilderOneIndex{file_id, file_content, _}|{
-        //     self.file_id_to_content.insert(file_id, file_content).map_or(Ok(()), |old_content|{
-        //         Err(anyhow!("File with id {:?} is already indexed by path {:?}", file_id, old_content.full_file_name.path))
-        //     })
-        // })?;
-
-        let a = file_index_to_content_ngram
+        let mut ngram_to_files_lines = HashMap::new();
+        file_index_to_content_ngram
             .into_iter()
             .map(
                 |BuilderOneIndex {
@@ -98,8 +106,8 @@ impl Builder {
                                 old_content.full_file_name.path
                             ))
                         })
-                        .and_then(|()| {
-                            Ok(ngram_to_line.into_iter().map(|(ngram, line_ids)| {
+                        .and_then(move |()| {
+                            Ok(ngram_to_line.into_iter().map(move |(ngram, line_ids)| {
                                 (
                                     ngram,
                                     FileLinesIndex::from((file_id, LinesIndex::from(line_ids))),
@@ -111,14 +119,16 @@ impl Builder {
             .flatten()
             .flatten()
             .for_each(|(ngram, file_lines_index)| {
-                let mut ngram_to_files_lines = HashMap::new();
                 ngram_to_files_lines
                     .entry(ngram)
                     .or_insert_with(Vec::new)
                     .push(file_lines_index);
-                self.ngram_to_files_lines.extend(ngram_to_files_lines);
             });
-            Ok(())
+        self.ngram_to_files_lines = ngram_to_files_lines
+            .into_iter()
+            .map(|(k, v)| (k, FilesLinesIndex::from(v)))
+            .collect::<HashMap<NgramIndex, FilesLinesIndex>>();
+        Ok(())
     }
 }
 

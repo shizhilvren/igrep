@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{ops::Deref, str::FromStr};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct NgramIndex {
@@ -7,7 +7,7 @@ pub struct NgramIndex {
 
 pub struct NgramIndexVec(pub Vec<NgramIndex>);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 
 pub struct FileIndex {
     file_id: u32,
@@ -92,12 +92,18 @@ impl From<(FileIndex, LinesIndex)> for FileLinesIndex {
 impl From<Vec<FileLinesIndex>> for FilesLinesIndex {
     fn from(value: Vec<FileLinesIndex>) -> Self {
         let mut sorted_value = value;
-        sorted_value.sort();
-        sorted_value.dedup();
+        sorted_value.sort_by_key(|file_lines_index| file_lines_index.file_id);
+        sorted_value.dedup_by(|a, b| match a.file_id == b.file_id {
+            true => {
+                a.lines_id.lines_id.append(&mut b.lines_id.lines_id);
+                a.lines_id.lines_id.sort();
+                a.lines_id.lines_id.dedup();
+                true
+            }
+            false => false,
+        });
         FilesLinesIndex {
             files_lines_id: sorted_value,
         }
     }
-    
 }
-

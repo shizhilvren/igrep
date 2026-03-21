@@ -4,3 +4,4 @@ web/index/*
 lin.log
 lin.txt
 compile_commands.json
+test/*
