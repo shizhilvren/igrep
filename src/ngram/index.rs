@@ -1,11 +1,13 @@
+use jsonrpsee::core::traits;
 use serde::{Deserialize, Serialize};
-use std::{ops::Deref, str::FromStr};
+use std::{fs::File, ops::Deref, str::FromStr};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct NgramIndex {
     ngaram: Box<[u8]>,
 }
 
+#[derive(Debug)]
 pub struct NgramIndexVec(pub Vec<NgramIndex>);
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -19,18 +21,18 @@ pub struct LineIndex {
     line: u32,
 }
 
-#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct LinesIndex {
     lines_id: Vec<LineIndex>,
 }
 
-#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct FileLinesIndex {
     file_id: FileIndex,
     lines_id: LinesIndex,
 }
 
-#[derive(Clone,PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 
 pub struct FilesLinesIndex {
     files_lines_id: Vec<FileLinesIndex>,
@@ -43,14 +45,43 @@ pub struct FileLineIndex {
 }
 
 impl NgramIndex {
-    pub fn get_ngrams(&self) -> &[u8] {
+    pub fn ngrams(&self) -> &[u8] {
         &self.ngaram
     }
 }
 
 impl FileIndex {
-    pub fn get_file_id(&self) -> u32 {
+    pub fn file_id(&self) -> u32 {
         self.file_id
+    }
+}
+
+impl LineIndex {
+    pub fn line_id(&self) -> u32 {
+        self.line
+    }
+    pub fn line_num(&self) -> u32 {
+        self.line + 1
+    }
+}
+
+impl LinesIndex{
+    pub fn lines(&self) -> &[LineIndex] {
+        &self.lines_id
+    }
+}
+impl FileLinesIndex {
+    pub fn file_id(&self) -> &FileIndex {
+        &self.file_id
+    }
+    pub fn lines_index(&self) -> &LinesIndex {
+        &self.lines_id
+    }
+} 
+
+impl FilesLinesIndex {
+    pub fn files_lines(&self) -> &[FileLinesIndex] {
+        &self.files_lines_id
     }
 }
 
@@ -68,15 +99,22 @@ impl From<&[u8]> for NgramIndex {
     }
 }
 
+impl From<Vec<NgramIndex>> for NgramIndexVec {
+    fn from(value: Vec<NgramIndex>) -> Self {
+        let mut sorted_value = value;
+        sorted_value.sort();
+        sorted_value.dedup();
+        NgramIndexVec(sorted_value)
+    }
+}
+
 impl From<(&[u8], u8)> for NgramIndexVec {
     fn from((bytes, ngram_len): (&[u8], u8)) -> Self {
-        let mut ret = bytes
+        let ret = bytes
             .windows(ngram_len as usize)
             .map(|ngram| NgramIndex::from(ngram))
             .collect::<Vec<_>>();
-        ret.sort();
-        ret.dedup();
-        NgramIndexVec(ret)
+        NgramIndexVec::from(ret)
     }
 }
 
@@ -120,4 +158,92 @@ impl From<Vec<FileLinesIndex>> for FilesLinesIndex {
             files_lines_id: sorted_value,
         }
     }
+}
+
+impl SetCalculate for FilesLinesIndex {
+    fn union(a: Self, b: Self) -> Self {
+        let a = a.files_lines_id;
+        let b = b.files_lines_id;
+        let mut sorted_value = a;
+        sorted_value.extend(b);
+        FilesLinesIndex::from(sorted_value)
+    }
+
+    fn intersection(a: Self, b: Self) -> Self {
+        let mut a_iter = a.files_lines_id.into_iter().peekable();
+        let mut b_iter = b.files_lines_id.into_iter().peekable();
+        let files_lines_id = std::iter::from_fn(|| {
+            loop {
+                match (a_iter.peek(), b_iter.peek()) {
+                    (Some(a_file_lines), Some(b_file_lines)) => {
+                        if a_file_lines.file_id == b_file_lines.file_id {
+                            let a_file_lines = a_file_lines.clone();
+                            let b_file_lines = b_file_lines.clone();
+                            a_iter.next();
+                            b_iter.next();
+                            let lines = SetCalculate::intersection(
+                                a_file_lines.lines_id,
+                                b_file_lines.lines_id,
+                            );
+                            match lines.lines_id.is_empty() {
+                                true => (),
+                                false => {
+                                    return Some(FileLinesIndex::from((
+                                        a_file_lines.file_id,
+                                        lines,
+                                    )));
+                                }
+                            }
+                        } else if a_file_lines.file_id < b_file_lines.file_id {
+                            a_iter.next();
+                        } else {
+                            b_iter.next();
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+        })
+        .collect();
+        FilesLinesIndex { files_lines_id }
+    }
+}
+
+impl SetCalculate for LinesIndex {
+    fn union(a: Self, b: Self) -> Self {
+        let mut sorted_value = a.lines_id;
+        sorted_value.extend(b.lines_id);
+        LinesIndex::from(sorted_value)
+    }
+
+    fn intersection(a: Self, b: Self) -> Self {
+        let mut a_iter = a.lines_id.into_iter().peekable();
+        let mut b_iter = b.lines_id.into_iter().peekable();
+        let lines_id = std::iter::from_fn(|| {
+            loop {
+                match (a_iter.peek(), b_iter.peek()) {
+                    (Some(a_line), Some(b_line)) => {
+                        if a_line == b_line {
+                            let a_line = a_line.clone();
+                            a_iter.next();
+                            b_iter.next();
+                            return Some(a_line);
+                        } else if a_line < b_line {
+                            a_iter.next();
+                        } else {
+                            b_iter.next();
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+        })
+        .collect();
+        LinesIndex { lines_id }
+    }
+}
+
+pub trait SetCalculate {
+    fn union(a: Self, b: Self) -> Self;
+    fn intersection(a: Self, b: Self) -> Self;
 }

@@ -1,6 +1,6 @@
 use crate::ngram::{
     builder::FileContent,
-    data::{FileData, FromToData, NgramData},
+    data::{FileData, FromToData, GlobalData, NgramData},
     index::{FileIndex, NgramIndex},
 };
 use anyhow::{Result, anyhow};
@@ -11,6 +11,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub struct GlobalDataPath;
+
 pub struct FilePath<'a> {
     file_index: &'a FileIndex,
 }
@@ -19,8 +21,20 @@ pub struct NgramPath<'a> {
     ngram_index: &'a NgramIndex,
 }
 
-pub struct FileLinePath {
-    path: PathBuf,
+impl GlobalDataPath {
+    pub fn dump(&self, base_path: &Path, global_data: &GlobalData) -> Result<()> {
+        let path = self.path(base_path);
+        match path.parent() {
+            Some(parent) => fs::create_dir_all(parent)
+                .map_err(|e| anyhow!("crate global file fail. {:?}", e))?,
+            None => {}
+        };
+        let mut file = fs::File::create(path.as_path())
+            .map_err(|e| anyhow!("crate global file fail. {:?}", e))?;
+        let data = global_data.to_data()?;
+        file.write_all(&data)?;
+        Ok(())
+    }
 }
 
 impl<'a> NgramPath<'a> {
@@ -53,9 +67,15 @@ impl<'a> FilePath<'a> {
     }
 }
 
+impl GetPath for GlobalDataPath {
+    fn path(&self, base_path: &Path) -> PathBuf {
+        base_path.join("global.data")
+    }   
+}
+
 impl<'a> GetPath for NgramPath<'a> {
     fn path(&self, base_path: &Path) -> PathBuf {
-        let ngrams = self.ngram_index.get_ngrams();
+        let ngrams = self.ngram_index.ngrams();
         let ans = ngrams
             .into_iter()
             .map(|u| u.to_string())
@@ -67,13 +87,19 @@ impl<'a> GetPath for NgramPath<'a> {
 
 impl<'a> GetPath for FilePath<'a> {
     fn path(&self, base_path: &Path) -> PathBuf {
-        let id = self.file_index.get_file_id();
+        let id = self.file_index.file_id();
         let hash_id = id % 1024;
         let path = base_path
             .join("files")
             .join(hash_id.to_string())
             .join(id.to_string());
         path
+    }
+}
+
+impl From<()> for  GlobalDataPath {
+    fn from(_: ()) -> Self {
+        GlobalDataPath
     }
 }
 
@@ -90,6 +116,7 @@ impl<'a> From<&'a FileIndex> for FilePath<'a> {
         FilePath { file_index }
     }
 }
+
 
 pub trait GetPath {
     fn path(&self, base_path: &Path) -> PathBuf;

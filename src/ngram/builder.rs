@@ -1,5 +1,5 @@
-use crate::ngram::data::NgramData;
-use crate::ngram::path::FilePath;
+use crate::ngram::data::{GlobalData, NgramData};
+use crate::ngram::path::{FilePath, GetPath, GlobalDataPath};
 use crate::ngram::{
     self,
     index::{
@@ -20,6 +20,7 @@ pub struct Builder {
     ngram_to_files_lines: HashMap<NgramIndex, FilesLinesIndex>,
     file_id_to_content: HashMap<FileIndex, FileContent>,
 }
+
 pub struct FileIndexBuilder {
     file_to_id: HashMap<AbsPath, FileIndex>,
 }
@@ -43,6 +44,7 @@ pub struct BuilderOneIndex {
     file_content: FileContent,
     ngram_to_line: HashMap<NgramIndex, Vec<LineIndex>>,
 }
+
 impl Builder {
     pub fn new(ngram_len: u8) -> Result<Self, Error> {
         if ngram_len < 3 {
@@ -72,6 +74,8 @@ impl Builder {
     }
 
     pub fn dump(&self, base_path: &Path) -> Result<()> {
+        self.remove_old_dump(base_path)?;
+        self.dump_global(base_path)?;
         self.dump_ngrams(base_path)?;
         self.dump_files(base_path)?;
         Ok(())
@@ -144,10 +148,16 @@ impl Builder {
             .collect::<HashMap<NgramIndex, FilesLinesIndex>>();
         Ok(())
     }
-    fn dump_ngrams(
-        &self,
-        base_path: &Path,
-    ) -> Result<()> {
+    fn remove_old_dump(&self, base_path: &Path) -> Result<()> {
+        if base_path.exists() {
+            info!("Removing old dump directory: {:?}", base_path);
+            std::fs::remove_dir_all(base_path).map_err(|e| {
+                anyhow!("Failed to remove old dump directory {:?}: {}", base_path, e)
+            })?;
+        }
+        Ok(())
+    }
+    fn dump_ngrams(&self, base_path: &Path) -> Result<()> {
         info!("start dump ngrams...");
         self.ngram_to_files_lines
             .par_iter()
@@ -168,6 +178,14 @@ impl Builder {
                 file_path.dump(base_path, file_content)
             })?;
         info!("dump files finish.");
+        Ok(())
+    }
+    fn dump_global(&self, base_path: &Path) -> Result<()> {
+        info!("start dump global data...");
+        let global_data = GlobalData::from(self.ngram_len);
+        let global_path = GlobalDataPath::from(());
+        global_path.dump(base_path, &global_data)?;
+        info!("dump global data finish.");
         Ok(())
     }
 }

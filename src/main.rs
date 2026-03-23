@@ -10,13 +10,18 @@ mod range;
 mod search;
 
 use crate::ngram::builder::FileIndexFinalBuilder;
+use crate::ngram::search::NgramIndexData;
+use crate::ngram::search::{SearchEngine, SearchOneNgramResult};
 use crate::search::{Engine, FileDataMatchRange, NgreamIndexData};
 use crate::{
     builder::{AbsPath, Builder, FileContent, FileIndexBuilder},
     range::Offset,
 };
 
-use log::{error, info, warn};
+use crate::ngram::data::{FileData, FromToData, GlobalData, NgramData};
+use crate::ngram::index::NgramIndex;
+use crate::ngram::path::{FilePath, GetPath, GlobalDataPath, NgramPath};
+use log::{debug, error, info, warn};
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
@@ -52,6 +57,8 @@ enum Commands {
     IndexNew(IndexArgs),
     /// Search through indexed files
     Search(SearchArgs),
+    /// Search through indexed files
+    SearchNew(SearchArgs),
     ClangIndex(ClangIndexArgs),
 }
 
@@ -73,7 +80,7 @@ struct IndexArgs {
 #[derive(Parser)]
 struct SearchArgs {
     /// Sets the config file path
-    #[arg(short, long, required = true)]
+    #[arg(short, long, required = true, default_value = "test")]
     config: String,
 
     /// The search term to look for
@@ -104,16 +111,18 @@ struct ClangIndexArgs {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let cli = Cli::parse();
 
     if cli.verbose {
-        println!("Welcome to igrep!");
+        info!("Welcome to igrep!");
     }
 
     match cli.command {
         Commands::Index(args) => run_index(args, cli.verbose),
         Commands::IndexNew(args) => run_index_new(args, cli.verbose),
         Commands::Search(args) => run_search(args, cli.verbose),
+        Commands::SearchNew(args) => run_search_new(args, cli.verbose),
         Commands::ClangIndex(args) => {
             // Call the Clang indexing logic with the provided file
             clang::clangd_lsp_client::main(
@@ -129,10 +138,7 @@ fn main() -> Result<()> {
     }
 }
 
-
-
 fn run_index_new(args: IndexArgs, verbose: bool) -> Result<()> {
-    env_logger::init();
     // 读取文件列表
     let file_content = fs::read(args.file_list.clone())?;
     let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
@@ -244,6 +250,112 @@ fn run_index(args: IndexArgs, verbose: bool) -> Result<()> {
     println!("Merging completed, dumping data...");
     encode_data.dump(Path::new(&args.config))?;
     println!("Indexing and merging completed successfully.");
+
+    Ok(())
+}
+
+fn run_search_new(args: SearchArgs, verbose: bool) -> Result<()> {
+    info!("Using config directory: {}", args.config);
+    info!("Search term: {}", args.search_term);
+    let base_path = &PathBuf::from_str(args.config.as_str())?;
+    let global_data_path = GlobalDataPath::from(());
+    let data = read_file(&global_data_path.path(base_path))?;
+    let global_data = GlobalData::from_data(data.as_slice())?;
+    let search_engine = SearchEngine::from(global_data);
+    let search_one_engine = search_engine.search(args.search_term.as_str())?;
+    let ngrams = search_one_engine.ngrams();
+    info!("Need get {} ngrams.", ngrams.0.len());
+    debug!("Need get ngrams {:?}", ngrams);
+
+    let ngarm_index_data = ngrams
+        .0
+        .into_iter()
+        .filter_map(|ngram| {
+            let ngram_path = NgramPath::from(&ngram);
+            let data = read_file(&ngram_path.path(base_path)).map_or(None, |data| Some(data));
+            data.and_then(|data| Some((ngram, NgramData::from_data(data.as_slice()))))
+        })
+        .map(|(ngram, data)| data.and_then(|data| Ok(NgramIndexData::from((ngram, data)))))
+        .collect::<Result<Vec<_>>>()?;
+    debug!("Get ngrams data {:?}", ngarm_index_data.len());
+    let index_data = SearchOneNgramResult::from(ngarm_index_data);
+
+    let files_lines_index = search_one_engine.files_lines(index_data);
+    debug!("Get files lines index {:?}", files_lines_index);
+
+    match files_lines_index.files_lines_index() {
+        Some(files_lines_index) => {
+            let all_files_lines = files_lines_index
+                .files_lines()
+                .iter()
+                .map(|file_lines_index| {
+                    let file_id = file_lines_index.file_id();
+                    let file_path = FilePath::from(file_id).path(base_path).join("file");
+                    let file_data = read_file(&file_path).map_err(|e| {
+                        anyhow!(
+                            "Failed to read file data for file id {}: {:?}",
+                            file_id.file_id(),
+                            e
+                        )
+                    });
+                    file_data.and_then(|data| Ok((file_lines_index, data)))
+                })
+                .map(|file_data| {
+                    file_data.and_then(|(file_lines_index, data)| {
+                        let file_id = file_lines_index.file_id();
+                        FileData::from_data(data.as_slice())
+                            .map_err(|e| {
+                                anyhow!(
+                                    "Failed to parse file data for file id {}: {:?}",
+                                    file_id.file_id(),
+                                    e
+                                )
+                            })
+                            .and_then(|data| Ok((file_lines_index, data)))
+                    })
+                })
+                .map(|file_data| {
+                    file_data.and_then(|(file_lins_index, data)| {
+                        let lines = file_lins_index.lines_index().lines();
+                        lines
+                            .iter()
+                            .map(|line_index| {
+                                let line_data = data.lines(line_index).ok_or_else(|| {
+                                    anyhow!(
+                                        "Failed to get line data for file id {}, line id {}",
+                                        file_lins_index.file_id().file_id(),
+                                        line_index.line_id()
+                                    )
+                                });
+                                line_data.and_then(|line_data| {
+                                    Ok((line_index.line_num(), line_data.clone()))
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()
+                            .and_then(|v| Ok((data.full_file_name().to_string(), v)))
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            // let file_data =
+            // })?;
+            // println!("{}", file_data.full_file_name().purple());
+            // file_lines_index
+            //     .lines_index()
+            //     .lines()
+            //     .iter()
+            //     .for_each(|line_index| {
+            //         if let Some(line) = file_data.lines(line_index) {
+            //             println!("{}:{}", line_index.line_num().to_string().green(), line);
+            //         }
+            //     });
+            // Ok::<(), anyhow::Error>(())
+            // })?;
+        }
+        None => {
+            warn!("search len small then 3");
+        }
+    }
 
     Ok(())
 }
@@ -362,5 +474,12 @@ fn read_range(file: &str, start: Offset, end: Offset) -> Result<Vec<u8>, std::io
     let mut buffer = vec![0; (end - start) as usize];
     file.seek(std::io::SeekFrom::Start(start as u64))?;
     file.read_exact(&mut buffer)?;
+    Ok(buffer)
+}
+
+fn read_file(file_path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    let mut file = fs::File::open(file_path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
     Ok(buffer)
 }

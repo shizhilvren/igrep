@@ -1,14 +1,13 @@
 use crate::ngram::builder::FileContent;
 use crate::ngram::index::{FileIndex, FileLineIndex, FilesLinesIndex, LineIndex, NgramIndex};
-use crate::ngram::path::{FileLinePath, FilePath, NgramPath};
+use crate::ngram::path::{FilePath, NgramPath};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub struct GlobalData<'a> {
+#[derive(Serialize, Deserialize)]
+pub struct GlobalData {
     ngram_len: u8,
-    id_to_file: HashMap<FileIndex, FilePath<'a>>,
-    ngram_to_file_line: HashMap<NgramIndex, NgramPath<'a>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -19,9 +18,30 @@ pub struct FileData {
     lines_paths: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct NgramData {
     files_lines: FilesLinesIndex,
+}
+
+impl FileData {
+    pub fn full_file_name(&self) -> &str {
+        &self.full_file_name
+    }
+    pub fn lines(&self, line_index: &LineIndex) -> Option<&String> {
+        self.lines_paths.get(line_index.line_id() as usize)
+    }
+}
+
+impl GlobalData {
+    pub fn ngram_len(&self) -> u8 {
+        self.ngram_len
+    }
+}
+
+impl NgramData {
+    pub fn files_lines(&self) -> &FilesLinesIndex {
+        &self.files_lines
+    }
 }
 
 impl From<FilesLinesIndex> for NgramData {
@@ -39,6 +59,13 @@ impl From<&FileContent> for FileData {
     }
 }
 
+impl From<u8> for GlobalData {
+    fn from(value: u8) -> Self {
+        GlobalData { ngram_len: value }
+    }
+}
+
+impl FromToData<'_> for GlobalData {}
 impl FromToData<'_> for NgramData {}
 impl FromToData<'_> for FileData {}
 
