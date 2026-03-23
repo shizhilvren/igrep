@@ -1,4 +1,5 @@
 use crate::ngram::data::NgramData;
+use crate::ngram::path::FilePath;
 use crate::ngram::{
     self,
     index::{
@@ -9,7 +10,7 @@ use crate::ngram::{
 };
 use anyhow::{Error, Result, anyhow};
 use bincode::de;
-use log::info;
+use log::{error, info, warn};
 use rayon::prelude::*;
 use std::path::Path;
 use std::{collections::HashMap, default};
@@ -71,13 +72,8 @@ impl Builder {
     }
 
     pub fn dump(&self, base_path: &Path) -> Result<()> {
-        self.ngram_to_files_lines
-            .iter()
-            .try_for_each(|(ngram, files_lines)| {
-                let ngarm_data = NgramData::from(files_lines.clone());
-                let ngram_path = NgramPath::from((ngram, &ngarm_data));
-                ngram_path.dump(base_path)
-            })?;
+        self.dump_ngrams(base_path)?;
+        self.dump_files(base_path)?;
         Ok(())
     }
 }
@@ -148,6 +144,32 @@ impl Builder {
             .collect::<HashMap<NgramIndex, FilesLinesIndex>>();
         Ok(())
     }
+    fn dump_ngrams(
+        &self,
+        base_path: &Path,
+    ) -> Result<()> {
+        info!("start dump ngrams...");
+        self.ngram_to_files_lines
+            .par_iter()
+            .try_for_each(|(ngram, files_lines)| {
+                let ngarm_data = NgramData::from(files_lines.clone());
+                let ngram_path = NgramPath::from(ngram);
+                ngram_path.dump(base_path, &ngarm_data)
+            })?;
+        info!("dump ngrams finish.");
+        Ok(())
+    }
+    fn dump_files(&self, base_path: &Path) -> Result<()> {
+        info!("start dump files...");
+        self.file_id_to_content
+            .par_iter()
+            .try_for_each(|(file_id, file_content)| {
+                let file_path = FilePath::from(file_id);
+                file_path.dump(base_path, file_content)
+            })?;
+        info!("dump files finish.");
+        Ok(())
+    }
 }
 
 impl FileIndexBuilder {
@@ -179,9 +201,24 @@ impl FileIndexBuilder {
     }
 }
 
+impl FileContent {
+    pub fn get_full_file_name(&self) -> AbsPath {
+        self.full_file_name.clone()
+    }
+    pub fn get_lines(&self) -> &Vec<String> {
+        &self.lines
+    }
+}
+
 impl From<String> for AbsPath {
     fn from(path: String) -> Self {
         AbsPath { path }
+    }
+}
+
+impl ToString for AbsPath {
+    fn to_string(&self) -> String {
+        self.path.clone()
     }
 }
 
@@ -194,7 +231,14 @@ impl TryFrom<FileIndexBuilder> for FileIndexFinalBuilder {
             .into_par_iter()
             .map(|(path, id)| (id, FileContent::try_from(path.clone())))
             .map(|(id, ret)| ret.map(|content| (id, content)))
-            .collect::<Result<Vec<(FileIndex, FileContent)>, Error>>()?;
+            .filter_map(|result| match result {
+                Ok(file) => Some(file),
+                Err(e) => {
+                    warn!("Failed to read file: {}", e);
+                    None
+                }
+            })
+            .collect::<Vec<(FileIndex, FileContent)>>();
         Ok(FileIndexFinalBuilder { files })
     }
 }

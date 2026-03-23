@@ -48,6 +48,12 @@ impl NgramIndex {
     }
 }
 
+impl FileIndex {
+    pub fn get_file_id(&self) -> u32 {
+        self.file_id
+    }
+}
+
 impl From<u32> for FileIndex {
     fn from(value: u32) -> Self {
         FileIndex { file_id: value }
