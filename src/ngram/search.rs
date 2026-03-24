@@ -7,8 +7,9 @@ use regex_syntax::{
 };
 
 use crate::ngram::{
-    data::{GlobalData, NgramData},
-    index::{FilesLinesIndex, NgramIndex, NgramIndexVec, SetCalculate},
+    builder::AbsPath,
+    data::{FileData, GlobalData, NgramData},
+    index::{FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec, SetCalculate},
 };
 
 pub struct SearchEngine {
@@ -34,6 +35,18 @@ pub enum SearchOneFilesLinesResult {
     FilesLines(FilesLinesIndex),
 }
 
+#[derive(Debug)]
+pub struct SearchOneFileLinesContentResult {
+    full_file_name: String,
+    lines: Vec<SearchOneLineContentResult>,
+}
+#[derive(Debug)]
+pub struct SearchOneLineContentResult {
+    line_num: u32,
+    content: String,
+    match_range: Vec<(u32, u32)>,
+}
+
 #[derive(Clone)]
 enum NgramTree {
     ALL,
@@ -49,6 +62,89 @@ impl SearchOneEngine {
 
     pub fn files_lines(&self, index_data: SearchOneNgramResult) -> SearchOneFilesLinesResult {
         self.tree.files_lines(&index_data)
+    }
+
+    pub fn file_lines_match(
+        &self,
+        file_data: &FileData,
+        lines_index: &LinesIndex,
+    ) -> Result<SearchOneFileLinesContentResult> {
+        let full_file_name = file_data.full_file_name().to_string();
+        let lines = lines_index
+            .lines()
+            .iter()
+            .filter_map(|line_index| {
+                let content = file_data
+                    .lines(line_index)
+                    .map_or_else(
+                        || {
+                            Err(anyhow!(
+                                "file {full_file_name} not have line {}",
+                                line_index.line_num()
+                            ))
+                        },
+                        |line| Ok(line),
+                    )
+                    .and_then(|content| {
+                        let match_range = self
+                            .re
+                            .find_iter(content.as_str())
+                            .map(|m| (m.start() as u32, m.end() as u32))
+                            .collect::<Vec<_>>();
+                        Ok(SearchOneLineContentResult {
+                            line_num: line_index.line_num(),
+                            content: content.to_string(),
+                            match_range,
+                        })
+                    });
+                content.map_or_else(
+                    |e| Some(Err(e)),
+                    |content| {
+                        if content.is_empty() {
+                            None
+                        } else {
+                            Some(Ok(content))
+                        }
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(SearchOneFileLinesContentResult {
+            full_file_name,
+            lines,
+        })
+    }
+}
+
+impl SearchOneFileLinesContentResult {
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+
+    pub fn full_file_name(&self) -> &String {
+        &self.full_file_name
+    }
+
+    pub fn lines(&self) -> &[SearchOneLineContentResult] {
+        &self.lines
+    }
+}
+
+impl SearchOneLineContentResult {
+    pub fn is_empty(&self) -> bool {
+        self.match_range.is_empty()
+    }
+
+    pub fn line_num(&self) -> u32 {
+        self.line_num
+    }
+
+    pub fn content(&self) -> &String {
+        &self.content
+    }
+
+    pub fn match_range(&self) -> &[(u32, u32)] {
+        &self.match_range
     }
 }
 
@@ -154,7 +250,7 @@ impl NgramTree {
     }
 }
 
-impl SearchOneFilesLinesResult{
+impl SearchOneFilesLinesResult {
     pub fn files_lines_index(&self) -> Option<&FilesLinesIndex> {
         match self {
             SearchOneFilesLinesResult::ALL => None,
