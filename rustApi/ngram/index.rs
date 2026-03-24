@@ -1,4 +1,3 @@
-use jsonrpsee::core::traits;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, ops::Deref, str::FromStr};
 
