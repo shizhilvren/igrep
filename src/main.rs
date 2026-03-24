@@ -30,6 +30,7 @@ use rayon::prelude::*;
 use regex_syntax::ast::print;
 
 use std::fs;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{
@@ -318,31 +319,31 @@ fn run_search_new(args: SearchArgs, verbose: bool) -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
             all_files_lines
                 .into_iter()
-                .try_for_each(|(file_lines_index, file_data)| {
-                    let ans = search_one_engine
-                        .file_lines_match(&file_data, file_lines_index.lines_index())?;
-                    match ans.is_empty() {
-                        false => {
-                            println!("{}", file_data.full_file_name().purple());
-                            ans.lines().iter().for_each(|line| {
-                                let line_num = line.line_num().to_string().green();
-                                print!("{}: ", line_num);
-                                let content = line.content();
-                                let match_ranges = line.match_range();
-                                let mut last_index = 0;
-                                for (start, end) in match_ranges {
-                                    let before = &content[last_index..*start as usize];
-                                    let matched = &content[*start as usize..*end as usize].red();
-                                    print!("{}{}", before, matched);
-                                    last_index = *end as usize;
-                                }
-                                let after = &content[last_index..];
-                                println!("{}", after);
-                            });
-                            Ok::<(), anyhow::Error>(())
+                .map(|(file_lines_index, file_data)| {
+                    search_one_engine.file_lines_match(&file_data, file_lines_index.lines_index())
+                })
+                .filter_map(|data| {
+                    data.map_or_else(|e| Some(Err(e)), |f| f.is_empty().not().then_some(Ok(f)))
+                })
+                .try_for_each(|ans| {
+                    let file_data = ans?;
+                    println!("{}", file_data.full_file_name().purple());
+                    file_data.lines().iter().for_each(|line| {
+                        let line_num = line.line_num().to_string().green();
+                        print!("{}: ", line_num);
+                        let content = line.content();
+                        let match_ranges = line.match_range();
+                        let mut last_index = 0;
+                        for (start, end) in match_ranges {
+                            let before = &content[last_index..*start as usize];
+                            let matched = &content[*start as usize..*end as usize].red();
+                            print!("{}{}", before, matched);
+                            last_index = *end as usize;
                         }
-                        true => Ok(()),
-                    }
+                        let after = &content[last_index..];
+                        println!("{}", after);
+                    });
+                    Ok::<(), anyhow::Error>(())
                 })?;
         }
         None => {
