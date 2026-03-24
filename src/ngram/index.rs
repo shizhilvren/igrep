@@ -65,7 +65,7 @@ impl LineIndex {
     }
 }
 
-impl LinesIndex{
+impl LinesIndex {
     pub fn lines(&self) -> &[LineIndex] {
         &self.lines_id
     }
@@ -77,7 +77,7 @@ impl FileLinesIndex {
     pub fn lines_index(&self) -> &LinesIndex {
         &self.lines_id
     }
-} 
+}
 
 impl FilesLinesIndex {
     pub fn files_lines(&self) -> &[FileLinesIndex] {
@@ -147,9 +147,9 @@ impl From<Vec<FileLinesIndex>> for FilesLinesIndex {
         sorted_value.sort_by_key(|file_lines_index| file_lines_index.file_id);
         sorted_value.dedup_by(|a, b| match a.file_id == b.file_id {
             true => {
-                a.lines_id.lines_id.append(&mut b.lines_id.lines_id);
-                a.lines_id.lines_id.sort();
-                a.lines_id.lines_id.dedup();
+                b.lines_id.lines_id.append(&mut a.lines_id.lines_id);
+                b.lines_id.lines_id.sort();
+                b.lines_id.lines_id.dedup();
                 true
             }
             false => false,
@@ -246,4 +246,80 @@ impl SetCalculate for LinesIndex {
 pub trait SetCalculate {
     fn union(a: Self, b: Self) -> Self;
     fn intersection(a: Self, b: Self) -> Self;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn FilesLinesIndex_union() {
+        let a = FilesLinesIndex::from(vec![
+            FileLinesIndex::from((
+                FileIndex::from(1),
+                LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)]),
+            )),
+            FileLinesIndex::from((
+                FileIndex::from(2),
+                LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)]),
+            )),
+        ]);
+        let b = FilesLinesIndex::from(vec![
+            FileLinesIndex::from((
+                FileIndex::from(1),
+                LinesIndex::from(vec![LineIndex::from(2), LineIndex::from(3)]),
+            )),
+            FileLinesIndex::from((
+                FileIndex::from(3),
+                LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)]),
+            )),
+        ]);
+        let c = FilesLinesIndex::union(a, b);
+        assert_eq!(
+            c.files_lines(),
+            &vec![
+                FileLinesIndex::from((
+                    FileIndex::from(1),
+                    LinesIndex::from(vec![
+                        LineIndex::from(1),
+                        LineIndex::from(2),
+                        LineIndex::from(3)
+                    ])
+                )),
+                FileLinesIndex::from((
+                    FileIndex::from(2),
+                    LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)])
+                )),
+                FileLinesIndex::from((
+                    FileIndex::from(3),
+                    LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)])
+                )),
+            ]
+        );
+    }
+
+    #[test]
+    fn FilesLinesIndex_from() {
+        let a = FilesLinesIndex::from(vec![
+            FileLinesIndex::from((
+                FileIndex::from(1),
+                LinesIndex::from(vec![LineIndex::from(1), LineIndex::from(2)]),
+            )),
+            FileLinesIndex::from((
+                FileIndex::from(1),
+                LinesIndex::from(vec![LineIndex::from(2), LineIndex::from(3)]),
+            )),
+        ]);
+        assert_eq!(
+            a.files_lines(),
+            &vec![FileLinesIndex::from((
+                FileIndex::from(1),
+                LinesIndex::from(vec![
+                    LineIndex::from(1),
+                    LineIndex::from(2),
+                    LineIndex::from(3)
+                ])
+            ))]
+        );
+    }
 }

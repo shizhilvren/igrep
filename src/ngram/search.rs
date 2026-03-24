@@ -313,3 +313,71 @@ impl From<(NgramIndex, NgramData)> for NgramIndexData {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SearchOneFilesLinesResult;
+    use crate::ngram::index::{FileIndex, FileLinesIndex, FilesLinesIndex, LineIndex, LinesIndex};
+
+    fn files_lines(entries: &[(u32, &[u32])]) -> FilesLinesIndex {
+        let files = entries
+            .iter()
+            .map(|(file_id, lines)| {
+                let lines = lines
+                    .iter()
+                    .map(|line| LineIndex::from(*line))
+                    .collect::<Vec<_>>();
+                FileLinesIndex::from((FileIndex::from(*file_id), LinesIndex::from(lines)))
+            })
+            .collect::<Vec<_>>();
+        FilesLinesIndex::from(files)
+    }
+
+    fn flatten(index: &FilesLinesIndex) -> Vec<(u32, Vec<u32>)> {
+        index
+            .files_lines()
+            .iter()
+            .map(|file_lines| {
+                (
+                    file_lines.file_id().file_id(),
+                    file_lines
+                        .lines_index()
+                        .lines()
+                        .iter()
+                        .map(|line| line.line_id())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn alternation_returns_all_when_any_side_is_all() {
+        let left = SearchOneFilesLinesResult::ALL;
+        let right = SearchOneFilesLinesResult::FilesLines(files_lines(&[(1, &[1, 2])]));
+        let result = left.alternation(right);
+        assert!(matches!(result, SearchOneFilesLinesResult::ALL));
+
+        let left = SearchOneFilesLinesResult::FilesLines(files_lines(&[(2, &[3])]));
+        let right = SearchOneFilesLinesResult::ALL;
+        let result = left.alternation(right);
+        assert!(matches!(result, SearchOneFilesLinesResult::ALL));
+    }
+
+    #[test]
+    fn alternation_unions_files_and_lines() {
+        let left = SearchOneFilesLinesResult::FilesLines(files_lines(&[(1, &[0, 2]), (3, &[5])]));
+        let right = SearchOneFilesLinesResult::FilesLines(files_lines(&[(2, &[4])]));
+
+        let result = left.alternation(right);
+
+        match result {
+            SearchOneFilesLinesResult::ALL => panic!("expected FilesLines result"),
+            SearchOneFilesLinesResult::FilesLines(index) => {
+                let actual = flatten(&index);
+                let expected = vec![(1, vec![0, 2]), (2, vec![4]), (3, vec![5])];
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+}
