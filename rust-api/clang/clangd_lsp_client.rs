@@ -1,6 +1,6 @@
 use crate::lsp::clangd_client::ClangdClient;
 use anyhow::Result;
-use std::{fs, thread::sleep, time::Duration};
+use std::{fs};
 
 pub fn main(
     file_path: &str,
@@ -102,7 +102,7 @@ pub fn main(
         Err(e) => println!("获取定义位置时出错: {}", e),
     }
 
-    let a:() = client.reader(-1)?;
+    let _a:() = client.reader(-1)?;
     println!("\nLSP 客户端示例运行完成");
 
     Ok(())

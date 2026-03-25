@@ -10,21 +10,16 @@ use std::{
     collections::HashMap,
     io::{self},
 };
-use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
 #[derive(Decode, Encode, Debug)]
 pub struct IndexData {
     ngram_len: u8,
     id_to_file: HashMap<FileIndex, FileRange>,
     ngram_to_file_line: HashMap<NgramIndex, NgramRange>,
 }
-
-#[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct FileLineData(String);
 
-#[wasm_bindgen]
 #[derive(Decode, Encode)]
 pub struct FileData {
     name: String,
@@ -60,7 +55,6 @@ impl NgramData {
     }
 }
 
-#[wasm_bindgen]
 impl FileLineData {
     pub fn get(&self) -> String {
         self.0.clone()
@@ -76,7 +70,6 @@ impl FileLineData {
     }
 }
 
-#[wasm_bindgen]
 impl FileData {
     pub fn name(&self) -> String {
         self.name.clone()

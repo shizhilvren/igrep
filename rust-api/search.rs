@@ -8,11 +8,9 @@ use regex_syntax::{
     parse,
 };
 use std::collections::{HashMap, HashSet};
-use wasm_bindgen::prelude::*;
 
 // Init -> NgramsIndex -> NgramData -> FileLinesIndex -> FileLinesData
 
-#[wasm_bindgen]
 pub struct Engine {
     index_data: IndexData,
 }
@@ -31,48 +29,32 @@ enum NgramTree {
     Alternation(Vec<NgramTree>),
 }
 
-#[wasm_bindgen]
 pub struct NgramTreeStruct {
-    #[wasm_bindgen(skip)]
     tree: NgramTree,
-    #[wasm_bindgen(skip)]
     re: regex::Regex,
 }
 
-#[wasm_bindgen]
 pub struct NgramTreeResultStruct {
-    #[wasm_bindgen(skip)]
     result: NgramTreeResult,
-    #[wasm_bindgen(skip)]
     re: regex::Regex,
 }
 
-#[wasm_bindgen]
 pub struct FileLines {
-    #[wasm_bindgen(readonly)]
     pub file: FileIndex,
     lines: Vec<LineIndex>,
 }
 
-#[wasm_bindgen]
 pub struct NgreamIndexRange {
-    #[wasm_bindgen(skip)]
     index: NgramIndex,
-    #[wasm_bindgen(readonly)]
     pub range: NgramRange,
 }
 
-#[wasm_bindgen]
 pub struct NgreamIndexData {
-    #[wasm_bindgen(skip)]
     index: NgramIndex,
-    #[wasm_bindgen(skip)]
     data: Vec<u8>,
 }
 
-#[wasm_bindgen]
 impl NgreamIndexData {
-    #[wasm_bindgen(constructor)]
     pub fn new(idx: NgramIndex, data: Vec<u8>) -> Self {
         Self {
             index: idx,
@@ -81,9 +63,7 @@ impl NgreamIndexData {
     }
 }
 
-#[wasm_bindgen]
 impl NgreamIndexRange {
-    #[wasm_bindgen(constructor)]
     pub fn new(idx: NgramIndex, range: NgramRange) -> Self {
         Self {
             index: idx,
@@ -95,15 +75,12 @@ impl NgreamIndexRange {
     }
 }
 
-#[wasm_bindgen]
 pub struct FileDataMatchRange {
     pub start: u32,
     pub end: u32,
 }
 
-#[wasm_bindgen]
 impl Engine {
-    #[wasm_bindgen(constructor)]
     pub fn new(index_data_buf: Vec<u8>) -> Result<Self, String> {
         let index_data = IndexData::from_data(index_data_buf).map_err(|e| format!("{}", e))?;
         Ok(Self { index_data })
@@ -233,7 +210,6 @@ impl Engine {
     }
 }
 
-#[wasm_bindgen]
 impl NgramTreeResultStruct {
     pub fn is_all(&self) -> bool {
         return matches!(self.result, NgramTreeResult::ALL);
@@ -270,7 +246,6 @@ impl NgramTreeResultStruct {
     }
 }
 
-#[wasm_bindgen]
 impl FileLines {
     pub fn lines(&self) -> Vec<LineIndex> {
         self.lines.clone()

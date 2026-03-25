@@ -1,32 +1,26 @@
 use crate::data::FromToData;
-use bincode::{self, Decode, Encode};
 use std::hash::Hash;
-use wasm_bindgen::prelude::*;
+use bincode::{self, Decode, Encode};
+
 
 /// This is NgramIndex, which is used to represent the index of n-grams in a file.
-#[wasm_bindgen]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Decode, Encode, PartialOrd, Ord)]
+#[derive(Decode, Encode, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NgramIndex {
     ngram: Box<[u8]>,
 }
 
-#[wasm_bindgen]
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Decode, Encode, PartialOrd, Ord, Copy)]
 pub struct FileIndex {
     file_id: u32,
 }
 
-#[wasm_bindgen]
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
 pub struct LineIndex {
     line: u32,
 }
-#[wasm_bindgen]
 #[derive(Clone, PartialEq, Debug, Decode, Encode, Hash, Eq, PartialOrd, Ord, Copy)]
 pub struct FileLineIndex {
-    #[wasm_bindgen(readonly)]
     pub file_id: FileIndex,
-    #[wasm_bindgen(readonly)]
     pub line_id: LineIndex,
 }
 
@@ -61,7 +55,6 @@ impl NgramIndex {
     }
 }
 
-#[wasm_bindgen]
 impl LineIndex {
     pub fn new(line: u32) -> Self {
         if line == 0 {
