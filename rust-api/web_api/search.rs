@@ -1,0 +1,47 @@
+use crate::web_api::index::{NgramIndex, NgramIndexVec};
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct SearchEngine {
+    engine: crate::ngram::search::SearchEngine,
+}
+
+#[wasm_bindgen]
+pub struct SearchOneEngine {
+    engine: crate::ngram::search::SearchOneEngine,
+}
+
+#[wasm_bindgen]
+impl SearchEngine {
+    pub fn search(&self, pattern: &str) -> Result<SearchOneEngine, JsValue> {
+        self.engine
+            .search(pattern)
+            .map(SearchOneEngine::from)
+            .map_err(|e| JsValue::from_str(&format!("search error: {}", e)))
+    }
+}
+
+#[wasm_bindgen]
+impl SearchOneEngine {
+    pub fn ngrams(&self) -> NgramIndexVec {
+        NgramIndexVec::from(
+            self.engine
+                .ngrams()
+                .0.into_iter()
+                .map(NgramIndex::from)
+                .collect::<Vec<NgramIndex>>(),
+        )
+    }
+}
+
+impl From<crate::ngram::search::SearchEngine> for SearchEngine {
+    fn from(value: crate::ngram::search::SearchEngine) -> Self {
+        SearchEngine { engine: value }
+    }
+}
+
+impl From<crate::ngram::search::SearchOneEngine> for SearchOneEngine {
+    fn from(value: crate::ngram::search::SearchOneEngine) -> Self {
+        SearchOneEngine { engine: value }
+    }
+}

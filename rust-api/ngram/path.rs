@@ -17,6 +17,7 @@ pub struct FilePath<'a> {
     file_index: &'a FileIndex,
 }
 
+#[derive(Debug)]
 pub struct NgramPath<'a> {
     ngram_index: &'a NgramIndex,
 }
@@ -117,7 +118,9 @@ impl<'a> From<&'a FileIndex> for FilePath<'a> {
     }
 }
 
-
 pub trait GetPath {
     fn path(&self, base_path: &Path) -> PathBuf;
+    fn path_str(&self, base_path: &Path) -> String {
+        self.path(base_path).to_string_lossy().into_owned()
+    }
 }

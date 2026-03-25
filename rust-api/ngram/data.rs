@@ -4,12 +4,15 @@ use crate::ngram::path::{FilePath, NgramPath};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
+
 
 #[derive(Serialize, Deserialize)]
 pub struct GlobalData {
     ngram_len: u8,
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Deserialize)]
 pub struct FileData {
     // file_path: String,

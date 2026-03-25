@@ -265,24 +265,20 @@ fn run_search_new(args: SearchArgs, verbose: bool) -> Result<()> {
     let global_data = GlobalData::from_data(data.as_slice())?;
     let search_engine = SearchEngine::from(global_data);
     let search_one_engine = search_engine.search(args.search_term.as_str())?;
-    let ngrams = search_one_engine.ngrams();
-    info!("Need get {} ngrams.", ngrams.0.len());
-    debug!("Need get ngrams {:?}", ngrams);
+    let ngrams_path = search_one_engine.ngrams();
+    info!("Need get {} ngrams.", ngrams_path.0.len());
+    debug!("Need get ngrams {:?}", ngrams_path);
 
-    let ngarm_index_data = ngrams
+    let ngarm_index_data = ngrams_path
         .0
-        .into_iter()
-        .filter_map(|ngram| {
-            let ngram_path = NgramPath::from(&ngram);
-            let data = read_file(&ngram_path.path(base_path)).map_or(None, |data| Some(data));
-            data.and_then(|data| Some((ngram, NgramData::from_data(data.as_slice()))))
+        .iter()
+        .map(|ngram_path| {
+            read_file(&ngram_path.path(base_path)).map_or_else(|_| vec![], |data| data)
         })
-        .map(|(ngram, data)| data.and_then(|data| Ok(NgramIndexData::from((ngram, data)))))
-        .collect::<Result<Vec<_>>>()?;
-    debug!("Get ngrams data {:?}", ngarm_index_data.len());
-    let index_data = SearchOneNgramResult::from(ngarm_index_data);
+        .collect::<Vec<_>>();
 
-    let files_lines_index = search_one_engine.files_lines(index_data);
+    debug!("Get ngrams data {:?}", ngarm_index_data.len());
+    let files_lines_index = search_one_engine.files_lines(ngrams_path, ngarm_index_data)?;
     debug!("Get files lines index {:?}", files_lines_index);
 
     match files_lines_index.files_lines_index() {

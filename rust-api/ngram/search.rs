@@ -5,11 +5,18 @@ use regex_syntax::{
     hir::{Hir, HirKind},
     parse,
 };
+use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::ngram::{
-    builder::AbsPath,
-    data::{FileData, GlobalData, NgramData},
-    index::{FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec, SetCalculate},
+use crate::{
+    data,
+    ngram::{
+        builder::AbsPath,
+        data::{FileData, FromToData, GlobalData, NgramData},
+        index::{
+            FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec, SetCalculate,
+        },
+        path::NgramPath,
+    },
 };
 
 pub struct SearchEngine {
@@ -30,7 +37,12 @@ pub struct NgramIndexData {
 }
 
 #[derive(Debug)]
-pub enum SearchOneFilesLinesResult {
+pub struct SearchOneFilesLinesStructResult {
+    pub enum_result: SearchOneFilesLinesEnumResult,
+}
+
+#[derive(Debug)]
+pub enum SearchOneFilesLinesEnumResult {
     ALL,
     FilesLines(FilesLinesIndex),
 }
@@ -60,8 +72,25 @@ impl SearchOneEngine {
         self.tree.ngrams()
     }
 
-    pub fn files_lines(&self, index_data: SearchOneNgramResult) -> SearchOneFilesLinesResult {
-        self.tree.files_lines(&index_data)
+    pub fn files_lines(
+        &self,
+        ngrams_index: NgramIndexVec,
+        datas: Vec<Vec<u8>>,
+    ) -> Result<SearchOneFilesLinesStructResult> {
+        (ngrams_index.0.len() == datas.len())
+            .then_some(())
+            .ok_or_else(|| anyhow!("ngram index and data length mismatch"))?;
+        let index_data = ngrams_index
+            .0
+            .into_iter()
+            .zip(datas.into_iter())
+            .map(|(index, data)| {
+                NgramData::from_data(data.as_slice())
+                    .and_then(|data| Ok(NgramIndexData::from((index, data))))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let index_data = SearchOneNgramResult::from(index_data);
+        Ok(self.tree.files_lines(&index_data))
     }
 
     pub fn file_lines_match(
@@ -227,58 +256,114 @@ impl NgramTree {
         NgramIndexVec::from(ngrams)
     }
 
-    fn files_lines(&self, index_data: &SearchOneNgramResult) -> SearchOneFilesLinesResult {
+    fn files_lines(&self, index_data: &SearchOneNgramResult) -> SearchOneFilesLinesStructResult {
         let ans = match self {
-            Self::ALL => SearchOneFilesLinesResult::ALL,
+            Self::ALL => SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL,
+            },
             Self::Gram(e) => match index_data.ngram_to_data(e) {
-                Some(data) => SearchOneFilesLinesResult::FilesLines(data.files_lines().clone()),
-                _ => SearchOneFilesLinesResult::FilesLines(FilesLinesIndex::from(vec![])),
+                Some(data) => SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(
+                        data.files_lines().clone(),
+                    ),
+                },
+                _ => SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(FilesLinesIndex::from(
+                        vec![],
+                    )),
+                },
             },
             Self::Alternation(sub) => sub.iter().map(|t| t.files_lines(index_data)).fold(
-                SearchOneFilesLinesResult::FilesLines(FilesLinesIndex::from(vec![])),
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(FilesLinesIndex::from(
+                        vec![],
+                    )),
+                },
                 |ans, result| ans.alternation(result),
             ),
 
-            Self::Concat(sub) => sub
-                .iter()
-                .map(|t| t.files_lines(index_data))
-                .fold(SearchOneFilesLinesResult::ALL, |ans, result| {
-                    ans.concat(result)
-                }),
+            Self::Concat(sub) => sub.iter().map(|t| t.files_lines(index_data)).fold(
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::ALL,
+                },
+                |ans, result| ans.concat(result),
+            ),
         };
         ans
     }
 }
 
-impl SearchOneFilesLinesResult {
+impl SearchOneFilesLinesStructResult {
     pub fn files_lines_index(&self) -> Option<&FilesLinesIndex> {
         match self {
-            SearchOneFilesLinesResult::ALL => None,
-            SearchOneFilesLinesResult::FilesLines(files_lines_index) => Some(files_lines_index),
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL,
+            } => None,
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines_index),
+            } => Some(files_lines_index),
         }
     }
 }
 
-impl SearchOneFilesLinesResult {
+impl SearchOneFilesLinesStructResult {
     fn alternation(self, other: Self) -> Self {
         match (self, other) {
-            (SearchOneFilesLinesResult::ALL, _) | (_, SearchOneFilesLinesResult::ALL) => {
-                SearchOneFilesLinesResult::ALL
-            }
             (
-                SearchOneFilesLinesResult::FilesLines(a),
-                SearchOneFilesLinesResult::FilesLines(b),
-            ) => SearchOneFilesLinesResult::FilesLines(FilesLinesIndex::union(a, b)),
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::ALL,
+                },
+                _,
+            )
+            | (
+                _,
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::ALL,
+                },
+            ) => SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL,
+            },
+            (
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(a),
+                },
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(b),
+                },
+            ) => SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::FilesLines(FilesLinesIndex::union(
+                    a, b,
+                )),
+            },
         }
     }
 
     fn concat(self, other: Self) -> Self {
         match (self, other) {
-            (SearchOneFilesLinesResult::ALL, r) | (r, SearchOneFilesLinesResult::ALL) => r,
             (
-                SearchOneFilesLinesResult::FilesLines(a),
-                SearchOneFilesLinesResult::FilesLines(b),
-            ) => SearchOneFilesLinesResult::FilesLines(FilesLinesIndex::intersection(a, b)),
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::ALL,
+                },
+                r,
+            )
+            | (
+                r,
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::ALL,
+                },
+            ) => r,
+            (
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(a),
+                },
+                SearchOneFilesLinesStructResult {
+                    enum_result: SearchOneFilesLinesEnumResult::FilesLines(b),
+                },
+            ) => SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::FilesLines(
+                    FilesLinesIndex::intersection(a, b),
+                ),
+            },
         }
     }
 }
@@ -316,8 +401,9 @@ impl From<(NgramIndex, NgramData)> for NgramIndexData {
 
 #[cfg(test)]
 mod tests {
-    use super::SearchOneFilesLinesResult;
+    use super::SearchOneFilesLinesStructResult;
     use crate::ngram::index::{FileIndex, FileLinesIndex, FilesLinesIndex, LineIndex, LinesIndex};
+    use crate::ngram::search::SearchOneFilesLinesEnumResult;
 
     fn files_lines(entries: &[(u32, &[u32])]) -> FilesLinesIndex {
         let files = entries
@@ -353,27 +439,56 @@ mod tests {
 
     #[test]
     fn alternation_returns_all_when_any_side_is_all() {
-        let left = SearchOneFilesLinesResult::ALL;
-        let right = SearchOneFilesLinesResult::FilesLines(files_lines(&[(1, &[1, 2])]));
+        let left = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::ALL,
+        };
+        let right = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines(&[(1, &[1, 2])])),
+        };
         let result = left.alternation(right);
-        assert!(matches!(result, SearchOneFilesLinesResult::ALL));
+        assert!(matches!(
+            result,
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL
+            }
+        ));
 
-        let left = SearchOneFilesLinesResult::FilesLines(files_lines(&[(2, &[3])]));
-        let right = SearchOneFilesLinesResult::ALL;
+        let left = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines(&[(2, &[3])])),
+        };
+        let right = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::ALL,
+        };
         let result = left.alternation(right);
-        assert!(matches!(result, SearchOneFilesLinesResult::ALL));
+        assert!(matches!(
+            result,
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL
+            }
+        ));
     }
 
     #[test]
     fn alternation_unions_files_and_lines() {
-        let left = SearchOneFilesLinesResult::FilesLines(files_lines(&[(1, &[0, 2]), (3, &[5])]));
-        let right = SearchOneFilesLinesResult::FilesLines(files_lines(&[(2, &[4])]));
+        let left = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines(&[
+                (1, &[0, 2]),
+                (3, &[5]),
+            ])),
+        };
+        let right = SearchOneFilesLinesStructResult {
+            enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines(&[(2, &[4])])),
+        };
 
         let result = left.alternation(right);
 
         match result {
-            SearchOneFilesLinesResult::ALL => panic!("expected FilesLines result"),
-            SearchOneFilesLinesResult::FilesLines(index) => {
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL,
+            } => panic!("expected FilesLines result"),
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::FilesLines(index),
+            } => {
                 let actual = flatten(&index);
                 let expected = vec![(1, vec![0, 2]), (2, vec![4]), (3, vec![5])];
                 assert_eq!(actual, expected);

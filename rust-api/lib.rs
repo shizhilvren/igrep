@@ -8,6 +8,7 @@ pub mod search;
 pub mod clang;
 pub mod lsp;
 pub mod ngram;
+pub mod web_api;
 
 use wasm_bindgen::prelude::*;
 

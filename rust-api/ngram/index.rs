@@ -1,12 +1,20 @@
 use serde::{Deserialize, Serialize};
-use std::{fs::File, ops::Deref, str::FromStr};
+use std::{
+    fs::File,
+    ops::Deref,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+use wasm_bindgen::prelude::*;
+
+use crate::ngram::path::{GetPath, NgramPath};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct NgramIndex {
     ngaram: Box<[u8]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NgramIndexVec(pub Vec<NgramIndex>);
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -31,6 +39,7 @@ pub struct FileLinesIndex {
     lines_id: LinesIndex,
 }
 
+#[wasm_bindgen]
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 
 pub struct FilesLinesIndex {
@@ -245,6 +254,12 @@ impl SetCalculate for LinesIndex {
 pub trait SetCalculate {
     fn union(a: Self, b: Self) -> Self;
     fn intersection(a: Self, b: Self) -> Self;
+}
+
+impl GetPath for NgramIndex {
+    fn path(&self, base_path: &Path) -> PathBuf {
+        NgramPath::from(self).path(base_path)
+    }
 }
 
 #[cfg(test)]
