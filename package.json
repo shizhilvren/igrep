@@ -4,22 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "serve": "webpack serve",
-    "build_wasm": "webpack",
+    "clean": "rm -rf pkg dist target",
+    "clean-npm-module" : "rm -rf node_modules",
+    "preclean-all" : "npm run clean-npm-module && npm run clean",
+    "clean-all" : "",
+    "build-wasm": "wasm-pack build  --target bundler",
+    "prebuild": "npm run build-wasm",
     "build": "run-p type-check \"build-only {@}\" --",
+    "predev": "npm run build",
+    "dev": "vite",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli web-src/"
   },
   "dependencies": {
     "vue": "^3.5.30",
-    "vue-router": "^5.0.3",
-    "html-webpack-plugin": "^5.6.6"
+    "vue-router": "^5.0.3"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
@@ -31,18 +35,17 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-oxlint": "~1.51.0",
     "eslint-plugin-vue": "~10.8.0",
+    "igrep": "file:./pkg",
     "jiti": "^2.6.1",
     "npm-run-all2": "^8.0.4",
     "oxlint": "~1.51.0",
     "prettier": "3.8.1",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
+    "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-vue-devtools": "^8.0.7",
-    "vue-tsc": "^3.2.5",
-    "@wasm-tool/wasm-pack-plugin": "1.7.0",
-    "webpack": "5.105.4",
-    "webpack-cli": "7.0.2",
-    "webpack-dev-server": "5.2.3"
+    "vite-plugin-wasm": "^3.6.0",
+    "vue-tsc": "^3.2.5"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

@@ -5,11 +5,11 @@ edition = "2024"
 
 [[bin]]
 name="igrep"
-path = "rustApi/main.rs"
+path = "rust-api/main.rs"
 
 [lib]
 crate-type = ["cdylib"]
-path = "rustApi/lib.rs"
+path = "rust-api/lib.rs"
 
 
 [dependencies]
