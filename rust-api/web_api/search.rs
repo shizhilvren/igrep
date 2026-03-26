@@ -1,4 +1,7 @@
-use crate::web_api::index::{NgramIndex, NgramIndexVec};
+use crate::{
+    ngram::data::FromToData,
+    web_api::index::{NgramIndex, NgramIndexVec},
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -7,7 +10,7 @@ pub struct SearchEngine {
 }
 
 #[wasm_bindgen]
-pub struct SearchOneEngine{
+pub struct SearchOneEngine {
     engine: crate::ngram::search::SearchOneEngine,
 }
 
@@ -19,6 +22,13 @@ impl SearchEngine {
             .map(SearchOneEngine::from)
             .map_err(|e| JsValue::from_str(&format!("search error: {}", e)))
     }
+    #[wasm_bindgen(constructor)]
+    pub fn new(global_data: Vec<u8>) -> Result<SearchEngine, JsValue> {
+        let data = crate::ngram::data::GlobalData::from_data(&global_data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse global data: {}", e)))?;
+        let engine = crate::ngram::search::SearchEngine::from(data);
+        Ok(SearchEngine { engine })
+    }
 }
 
 #[wasm_bindgen]
@@ -27,7 +37,8 @@ impl SearchOneEngine {
         NgramIndexVec::from(
             self.engine
                 .ngrams()
-                .0.into_iter()
+                .0
+                .into_iter()
                 .map(NgramIndex::from)
                 .collect::<Vec<NgramIndex>>(),
         )

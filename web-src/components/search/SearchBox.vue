@@ -12,7 +12,7 @@ const inputValue = ref('')
 <template>
     <div class="input-group mb-3">
         <input v-model="inputValue" type="text" class="form-control" :placeholder="hit_msg" aria-label="Search"
-            aria-describedby="button-addon2" >
+            aria-describedby="button-addon2" :disabled="disable">
         <button @click="$emit('search', inputValue)" class="btn btn-primary" type="button" id="button-addon2" :disabled="disable">{{ button_msg }} </button>
     </div>
 </template>
