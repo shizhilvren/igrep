@@ -7,7 +7,7 @@ pub struct SearchEngine {
 }
 
 #[wasm_bindgen]
-pub struct SearchOneEngine {
+pub struct SearchOneEngine{
     engine: crate::ngram::search::SearchOneEngine,
 }
 

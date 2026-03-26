@@ -7,9 +7,9 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 
-use crate::ngram::path::{GetPath, NgramPath};
+use crate::ngram::path::{FilePath, GetPath, NgramPath};
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct NgramIndex {
     ngaram: Box<[u8]>,
 }
@@ -262,6 +262,12 @@ impl GetPath for NgramIndex {
     }
 }
 
+
+impl GetPath for FileIndex {
+    fn path(&self, base_path: &Path) -> PathBuf {
+        FilePath::from(self).path(base_path)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,4 @@
+use crate::index;
 use crate::ngram::data::{GlobalData, NgramData};
 use crate::ngram::path::{FilePath, GetPath, GlobalDataPath};
 use crate::ngram::{
@@ -12,6 +13,7 @@ use anyhow::{Error, Result, anyhow};
 use bincode::de;
 use log::{error, info, warn};
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::path::Path;
 use std::{collections::HashMap, default};
 
@@ -182,10 +184,16 @@ impl Builder {
     }
     fn dump_global(&self, base_path: &Path) -> Result<()> {
         info!("start dump global data...");
-        let global_data = GlobalData::from(self.ngram_len);
+        let index = self
+            .ngram_to_files_lines
+            .keys()
+            .cloned()
+            .collect::<HashSet<NgramIndex>>();
+        let global_data = GlobalData::from((self.ngram_len, index));
         let global_path = GlobalDataPath::from(());
         global_path.dump(base_path, &global_data)?;
-        info!("dump global data finish.");
+        let index_num = self.ngram_to_files_lines.len();
+        info!("dump global data finish. Include {} ngrams.", index_num);
         Ok(())
     }
 }

@@ -3,13 +3,13 @@ use crate::ngram::index::{FileIndex, FileLineIndex, FilesLinesIndex, LineIndex, 
 use crate::ngram::path::{FilePath, NgramPath};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::*;
 
-
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone) ]
 pub struct GlobalData {
     ngram_len: u8,
+    indexs: HashSet<NgramIndex>,
 }
 
 #[wasm_bindgen]
@@ -39,6 +39,9 @@ impl GlobalData {
     pub fn ngram_len(&self) -> u8 {
         self.ngram_len
     }
+    pub fn has_index(&self, index: &NgramIndex) -> bool {
+        self.indexs.contains(index)
+    }
 }
 
 impl NgramData {
@@ -62,9 +65,12 @@ impl From<&FileContent> for FileData {
     }
 }
 
-impl From<u8> for GlobalData {
-    fn from(value: u8) -> Self {
-        GlobalData { ngram_len: value }
+impl From<(u8, HashSet<NgramIndex>)> for GlobalData {
+    fn from((value, indexs): (u8, HashSet<NgramIndex>)) -> Self {
+        GlobalData {
+            ngram_len: value,
+            indexs: indexs,
+        }
     }
 }
 

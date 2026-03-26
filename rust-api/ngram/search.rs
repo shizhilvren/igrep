@@ -13,7 +13,8 @@ use crate::{
         builder::AbsPath,
         data::{FileData, FromToData, GlobalData, NgramData},
         index::{
-            FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec, SetCalculate,
+            FileIndex, FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec,
+            SetCalculate,
         },
         path::NgramPath,
     },
@@ -24,6 +25,7 @@ pub struct SearchEngine {
 }
 
 pub struct SearchOneEngine {
+    global_data: GlobalData,
     tree: NgramTree,
     re: regex::Regex,
 }
@@ -69,7 +71,14 @@ enum NgramTree {
 
 impl SearchOneEngine {
     pub fn ngrams(&self) -> NgramIndexVec {
-        self.tree.ngrams()
+        NgramIndexVec::from(
+            self.tree
+                .ngrams()
+                .0
+                .into_iter()
+                .filter(|ngram_index| self.global_data.has_index(ngram_index))
+                .collect::<Vec<_>>(),
+        )
     }
 
     pub fn files_lines(
@@ -84,9 +93,11 @@ impl SearchOneEngine {
             .0
             .into_iter()
             .zip(datas.into_iter())
-            .map(|(index, data)| {
-                NgramData::from_data(data.as_slice())
-                    .and_then(|data| Ok(NgramIndexData::from((index, data))))
+            .filter_map(|(index, data)| {
+                (!data.is_empty()).then_some(
+                    NgramData::from_data(data.as_slice())
+                        .and_then(|data| Ok(NgramIndexData::from((index, data)))),
+                )
             })
             .collect::<Result<Vec<_>>>()?;
         let index_data = SearchOneNgramResult::from(index_data);
@@ -95,9 +106,14 @@ impl SearchOneEngine {
 
     pub fn file_lines_match(
         &self,
-        file_data: &FileData,
-        lines_index: &LinesIndex,
+        file_index: FileIndex,
+        file_data: Vec<u8>,
+        result: &SearchOneFilesLinesStructResult,
     ) -> Result<SearchOneFileLinesContentResult> {
+        let lines_index = result
+            .binary_search_file(&file_index)
+            .ok_or_else(|| anyhow!("file {} not match", file_index.file_id()))?;
+        let file_data = FileData::from_data(&file_data)?;
         let full_file_name = file_data.full_file_name().to_string();
         let lines = lines_index
             .lines()
@@ -183,7 +199,11 @@ impl SearchEngine {
         let hir = parse(pattern).map_err(|e| anyhow!("parse error: {}", e))?;
         let tree = Self::ngram_from_hir(&hir, n);
         let re = regex::Regex::new(pattern).map_err(|e| anyhow!("regex error: {}", e))?;
-        Ok(SearchOneEngine { tree: tree, re: re })
+        Ok(SearchOneEngine {
+            global_data: self.global_data.clone(),
+            tree: tree,
+            re: re,
+        })
     }
 }
 
@@ -294,14 +314,45 @@ impl NgramTree {
 }
 
 impl SearchOneFilesLinesStructResult {
-    pub fn files_lines_index(&self) -> Option<&FilesLinesIndex> {
+    // pub fn files_lines_index(&self) -> Option<&FilesLinesIndex> {
+    //     match self {
+    //         SearchOneFilesLinesStructResult {
+    //             enum_result: SearchOneFilesLinesEnumResult::ALL,
+    //         } => None,
+    //         SearchOneFilesLinesStructResult {
+    //             enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines_index),
+    //         } => Some(files_lines_index),
+    //     }
+    // }
+
+    pub fn files(&self) -> Result<Vec<FileIndex>> {
+        match self {
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::ALL,
+            } => Err(anyhow!(
+                "search string so short, please check input and try again"
+            )),
+            SearchOneFilesLinesStructResult {
+                enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines_index),
+            } => Ok(files_lines_index
+                .files_lines()
+                .iter()
+                .map(|file_lines| file_lines.file_id().clone())
+                .collect()),
+        }
+    }
+    pub fn binary_search_file(&self, file_index: &FileIndex) -> Option<&LinesIndex> {
         match self {
             SearchOneFilesLinesStructResult {
                 enum_result: SearchOneFilesLinesEnumResult::ALL,
             } => None,
             SearchOneFilesLinesStructResult {
                 enum_result: SearchOneFilesLinesEnumResult::FilesLines(files_lines_index),
-            } => Some(files_lines_index),
+            } => files_lines_index
+                .files_lines()
+                .binary_search_by_key(file_index, |file_lines| *file_lines.file_id())
+                .ok()
+                .map(|index| files_lines_index.files_lines()[index].lines_index()),
         }
     }
 }

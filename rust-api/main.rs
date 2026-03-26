@@ -273,80 +273,61 @@ fn run_search_new(args: SearchArgs, verbose: bool) -> Result<()> {
         .0
         .iter()
         .map(|ngram_path| {
-            read_file(&ngram_path.path(base_path)).map_or_else(|_| vec![], |data| data)
+            read_file(&ngram_path.path(base_path)).map_err(|e| {
+                anyhow!(
+                    "Failed to read ngram data for ngram {:?}: {}",
+                    ngram_path,
+                    e
+                )
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
 
     debug!("Get ngrams data {:?}", ngarm_index_data.len());
     let files_lines_index = search_one_engine.files_lines(ngrams_path, ngarm_index_data)?;
     debug!("Get files lines index {:?}", files_lines_index);
 
-    match files_lines_index.files_lines_index() {
-        Some(files_lines_index) => {
-            let all_files_lines = files_lines_index
-                .files_lines()
-                .iter()
-                .map(|file_lines_index| {
-                    let file_id = file_lines_index.file_id();
-                    let file_path = FilePath::from(file_id).path(base_path).join("file");
-                    let file_data = read_file(&file_path).map_err(|e| {
-                        anyhow!(
-                            "Failed to read file data for file id {}: {:?}",
-                            file_id.file_id(),
-                            e
-                        )
-                    });
-                    file_data.and_then(|data| Ok((file_lines_index, data)))
+    let files_data = files_lines_index
+        .files()?
+        .into_iter()
+        .map(|file_index| {
+            read_file(&file_index.path(base_path).join("file"))
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to read file data for file id {}: {:?}",
+                        file_index.file_id(),
+                        e
+                    )
                 })
-                .map(|file_data| {
-                    file_data.and_then(|(file_lines_index, data)| {
-                        let file_id = file_lines_index.file_id();
-                        FileData::from_data(data.as_slice())
-                            .map_err(|e| {
-                                anyhow!(
-                                    "Failed to parse file data for file id {}: {:?}",
-                                    file_id.file_id(),
-                                    e
-                                )
-                            })
-                            .and_then(|data| Ok((file_lines_index, data)))
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            all_files_lines
-                .into_iter()
-                .map(|(file_lines_index, file_data)| {
-                    search_one_engine.file_lines_match(&file_data, file_lines_index.lines_index())
-                })
-                .filter_map(|data| {
-                    data.map_or_else(|e| Some(Err(e)), |f| f.is_empty().not().then_some(Ok(f)))
-                })
-                .try_for_each(|ans| {
-                    let file_data = ans?;
-                    println!("{}", file_data.full_file_name().purple());
-                    file_data.lines().iter().for_each(|line| {
-                        let line_num = line.line_num().to_string().green();
-                        print!("{}: ", line_num);
-                        let content = line.content();
-                        let match_ranges = line.match_range();
-                        let mut last_index = 0;
-                        for (start, end) in match_ranges {
-                            let before = &content[last_index..*start as usize];
-                            let matched = &content[*start as usize..*end as usize].red();
-                            print!("{}{}", before, matched);
-                            last_index = *end as usize;
-                        }
-                        let after = &content[last_index..];
-                        println!("{}", after);
-                    });
-                    Ok::<(), anyhow::Error>(())
-                })?;
-        }
-        None => {
-            warn!("search len small then 3");
-        }
-    }
+                .and_then(|d| Ok((file_index, d)))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
+    files_data.into_iter().try_for_each(|(file_index, data)| {
+        let file_data = search_one_engine.file_lines_match(file_index, data, &files_lines_index)?;
+        match file_data.is_empty() {
+            true => info!("file {} not match", file_index.file_id()),
+            false => {
+                println!("{}", file_data.full_file_name().purple());
+                file_data.lines().iter().for_each(|line| {
+                    let line_num = line.line_num().to_string().green();
+                    print!("{}: ", line_num);
+                    let content = line.content();
+                    let match_ranges = line.match_range();
+                    let mut last_index = 0;
+                    for (start, end) in match_ranges {
+                        let before = &content[last_index..*start as usize];
+                        let matched = &content[*start as usize..*end as usize].red();
+                        print!("{}{}", before, matched);
+                        last_index = *end as usize;
+                    }
+                    let after = &content[last_index..];
+                    println!("{}", after);
+                });
+            }
+        }
+        Ok::<(), anyhow::Error>(())
+    })?;
     Ok(())
 }
 
