@@ -12,8 +12,6 @@ import File from "./index/File.vue";
     <RouterLink to="/index">Go to Index</RouterLink>
   </nav>
   <main>
-  </main>
-  <main>
     <div class="common-layout">
       <el-row class="row-bg" justify="center">
         <el-col :span="16">

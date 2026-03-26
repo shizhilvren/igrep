@@ -17,7 +17,24 @@ import HelloWorld from './components/HelloWorld.vue'
     </div>
   </header> -->
 
-  <RouterView />
+  <p><strong>Current route path:</strong> {{ $route.fullPath }}</p>
+  <nav>
+    <RouterLink to="/search">Go to search</RouterLink>
+    <!-- <RouterLink to="/index">Go to Index</RouterLink> -->
+  </nav>
+  <main>
+    <div class="common-layout">
+      <el-row class="row-bg" justify="center">
+        <el-col :span="16">
+          <div class="grid-content ep-bg-purple">
+            <RouterView />
+          </div>
+        </el-col>
+      </el-row>
+    </div>
+  </main>
+
+  <!-- <RouterView /> -->
 </template>
 
 <style scoped>
