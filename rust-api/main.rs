@@ -71,7 +71,7 @@ struct IndexArgs {
     file_list: String,
 
     /// Sets the config file path
-    #[arg(short, long, default_value = "test")]
+    #[arg(short, long, default_value = "ngram-index")]
     config: String,
 
     /// Sets the size of n-gram
@@ -82,7 +82,7 @@ struct IndexArgs {
 #[derive(Parser)]
 struct SearchArgs {
     /// Sets the config file path
-    #[arg(short, long, required = true, default_value = "test")]
+    #[arg(short, long, default_value = "ngram-index")]
     config: String,
 
     /// The search term to look for
