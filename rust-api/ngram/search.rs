@@ -54,7 +54,7 @@ pub struct SearchOneFileLinesContentResult {
     full_file_name: String,
     lines: Vec<SearchOneLineContentResult>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SearchOneLineContentResult {
     line_num: u32,
     content: String,

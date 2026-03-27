@@ -23,7 +23,9 @@ import HelloWorld from './components/HelloWorld.vue'
     <!-- <RouterLink to="/index">Go to Index</RouterLink> -->
   </nav>
   <main>
-    <div class="common-layout">
+    <RouterView />
+
+    <!-- <div class="common-layout">
       <el-row class="row-bg" justify="center">
         <el-col :span="16">
           <div class="grid-content ep-bg-purple">
@@ -31,7 +33,7 @@ import HelloWorld from './components/HelloWorld.vue'
           </div>
         </el-col>
       </el-row>
-    </div>
+    </div> -->
   </main>
 
   <!-- <RouterView /> -->

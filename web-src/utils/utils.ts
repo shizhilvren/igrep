@@ -9,3 +9,12 @@ export async function fetchFileData(path_base_url: String): Promise<Uint8Array> 
     const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
 }
+
+export class OneLineRange {
+    constructor(startCollNumber: number, endCollNumber: number) {
+        this.startCollNumber = startCollNumber;
+        this.endCollNumber = endCollNumber;
+    }
+    readonly startCollNumber: number;
+    readonly endCollNumber: number;
+}

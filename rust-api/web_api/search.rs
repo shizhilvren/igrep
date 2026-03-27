@@ -1,7 +1,7 @@
 use crate::{
     ngram::data::FromToData,
     web_api::{
-        data::VecU8,
+        data::{Range, VecU8},
         index::{FileIndex, NgramIndex, NgramIndexVec},
     },
 };
@@ -25,6 +25,31 @@ pub struct SearchOneFilesLinesStructResult {
 #[wasm_bindgen]
 pub struct SearchOneFileLinesContentResult {
     result: crate::ngram::search::SearchOneFileLinesContentResult,
+}
+
+#[wasm_bindgen]
+pub struct SearchOneLineContentResult {
+    result: crate::ngram::search::SearchOneLineContentResult,
+}
+
+#[wasm_bindgen]
+impl SearchOneLineContentResult {
+    pub fn line_num(&self) -> u32 {
+        self.result.line_num()
+    }
+    pub fn content(&self) -> String {
+        self.result.content().clone()
+    }
+    pub fn match_range(&self) -> Vec<Range> {
+        self.result
+            .match_range()
+            .iter()
+            .map(|r| Range {
+                start: r.0,
+                end: r.1,
+            })
+            .collect()
+    }
 }
 
 #[wasm_bindgen]
@@ -98,6 +123,20 @@ impl SearchOneFilesLinesStructResult {
     }
 }
 
+#[wasm_bindgen]
+impl SearchOneFileLinesContentResult {
+    pub fn lines(&self) -> Vec<SearchOneLineContentResult> {
+        self.result
+            .lines()
+            .into_iter()
+            .map(|v| SearchOneLineContentResult::from(v.clone()))
+            .collect::<Vec<_>>()
+    }
+    pub fn full_file_name(&self) -> String {
+        self.result.full_file_name().clone()
+    }
+}
+
 impl From<crate::ngram::search::SearchOneFilesLinesStructResult>
     for SearchOneFilesLinesStructResult
 {
@@ -123,5 +162,11 @@ impl From<crate::ngram::search::SearchEngine> for SearchEngine {
 impl From<crate::ngram::search::SearchOneEngine> for SearchOneEngine {
     fn from(value: crate::ngram::search::SearchOneEngine) -> Self {
         SearchOneEngine { engine: value }
+    }
+}
+
+impl From<crate::ngram::search::SearchOneLineContentResult> for SearchOneLineContentResult {
+    fn from(value: crate::ngram::search::SearchOneLineContentResult) -> Self {
+        SearchOneLineContentResult { result: value }
     }
 }

@@ -5,6 +5,14 @@ pub struct VecU8 {
     vec: Vec<u8>,
 }
 
+#[wasm_bindgen]
+pub struct Range {
+    #[wasm_bindgen(readonly)]
+    pub start: u32,
+    #[wasm_bindgen(readonly)]
+    pub end: u32,
+}
+
 impl VecU8 {
     pub fn vec(self) -> Vec<u8> {
         self.vec
@@ -18,6 +26,8 @@ impl VecU8 {
         VecU8 { vec: global_data }
     }
 }
+
+
 
 impl From<Vec<u8>> for VecU8 {
     fn from(value: Vec<u8>) -> Self {
