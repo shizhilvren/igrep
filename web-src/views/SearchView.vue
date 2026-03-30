@@ -1,7 +1,9 @@
 <template>
     <main>
         <SearchBox hit_msg="Enter search term" button_msg="Search" :disable="!init_finished" @search="handleSearch" />
-        <div>Files: {{ number_results.files_count }}, Lines: {{ number_results.lines_count }}</div>
+        <div v-if="!many_lines()">Files: {{ number_results.files_count }},
+            Lines: {{ number_results.lines_count }}</div>
+        <div v-else>more results than {{ MAX_SEARCH_TERM_LENGTH }} lines, stop displaying results</div>
         <FileResult v-for="(item, index) in search_item" :key="index" v-bind="{
             id: index,
             filePath: item.full_file_name()
@@ -39,6 +41,7 @@ const search_engine = ref<SearchEngine | null>(null);
 const search_item = ref<SearchOneFileLinesContentResult[]>([])
 const number_results = ref(new ResultCount(0, 0))
 const searching = ref<CancellablePromise<any> | null>(null)
+const MAX_SEARCH_TERM_LENGTH = 10000
 
 onMounted(() => {
     fetchFileData("ngram-index/global.data").then((data) => {
@@ -79,6 +82,12 @@ async function handleSearch(searchTerm: string) {
     }
     searching.value = null;
 }
+function many_lines() {
+    if (number_results.value.lines_count > MAX_SEARCH_TERM_LENGTH) {
+        return true;
+    }
+    return false;
+}
 
 async function handleOneSearch(searchTerm: string, controller: AbortController) {
     console.log('Search term:', searchTerm);
@@ -118,8 +127,13 @@ async function handleOneSearch(searchTerm: string, controller: AbortController) 
             let lines = file_match.lines();
             number_results.value.lines_count += lines.length;
             number_results.value.files_count += 1;
+
             if (controller.signal.aborted) {
                 console.log('Search aborted, stopping further processing');
+            }
+            if (many_lines()) {
+                console.log(`Found ${number_results.value.files_count} files and ${number_results.value.lines_count} lines so far...`);
+                return;
             }
             search_item.value.push(file_match);
         }).catch((error) => {
@@ -141,4 +155,6 @@ class ResultCount {
         this.files_count = files_count
     }
 }
+
+
 </script>
