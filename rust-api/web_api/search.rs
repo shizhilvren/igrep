@@ -135,6 +135,9 @@ impl SearchOneFileLinesContentResult {
     pub fn full_file_name(&self) -> String {
         self.result.full_file_name().clone()
     }
+    pub fn is_empty(&self) -> bool {
+        self.result.is_empty()
+    }   
 }
 
 impl From<crate::ngram::search::SearchOneFilesLinesStructResult>

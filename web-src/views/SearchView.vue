@@ -2,6 +2,7 @@
     <main>
         this is search
         <SearchBox hit_msg="Enter search term" button_msg="Search" :disable="!init_finished" @search="handleSearch" />
+        <div>Files: {{ number_results.files_count }}, Lines: {{ number_results.lines_count }}</div>
         <FileResult v-for="(item, index) in search_item" :key="index" v-bind="{
             id: index,
             filePath: item.full_file_name()
@@ -36,6 +37,7 @@ onMounted(() => {
 const init_finished = ref(false);
 const search_engine = ref<SearchEngine | null>(null);
 const search_item = ref<SearchOneFileLinesContentResult[]>([])
+const number_results = ref(new ResultCount(0, 0))
 
 onMounted(() => {
     fetchFileData("ngram-index/global.data").then((data) => {
@@ -52,6 +54,7 @@ onMounted(() => {
 
 async function handleSearch(searchTerm: string) {
     console.log('Search term:', searchTerm);
+    number_results.value = new ResultCount(0, 0);
     search_item.value = [];
     // Here you can add logic to perform the search using the searchTerm
     let search_one_engine = search_engine.value?.search(searchTerm);
@@ -77,31 +80,38 @@ async function handleSearch(searchTerm: string) {
     if (!files_data_promise || !files_index || !files_lines_index) {
         throw new Error("No files data found");
     }
-    let files_data = (await Promise.all(files_data_promise)).map((data) => {
-        return new VecU8(data);
-    });
-    files_data.forEach((data, idx) => {
-        console.log('File data:', data);
-        let date_index = files_index[idx];
-        if (!date_index) {
-            console.error('No file index for data at index:', idx);
-            return;
-        }
-        let file_match = search_one_engine?.file_lines_match(date_index, data, files_lines_index);
-        console.log('File lines match result:', file_match);
-        file_match?.lines().forEach((line) => {
-            console.log('Matched line:', line);
+    for (let [idx, iter] of files_data_promise.entries()) {
+        iter.then((data) => {
+            console.log('File data loaded:', data);
+            let file_data = new VecU8(data)
+            let date_index = files_index[idx]!;
+            let file_match = search_one_engine?.file_lines_match(date_index, file_data, files_lines_index)!;
+            if (file_match.is_empty()) {
+                console.log('No matches found in file:', date_index);
+                return;
+            }
+            let lines = file_match.lines();
+            number_results.value.lines_count += lines.length;
+            number_results.value.files_count += 1;
+            lines.forEach((line) => {
+                console.log('Matched line:', line);
+            });
+            search_item.value.push(file_match);
+        }).catch((error) => {
+            console.error('Error loading file data:', error);
         });
-        if (!file_match) {
-            console.error('No file match for data at index:', idx);
-            return;
-        }
-        search_item.value.push(file_match);
-    });
-
+    }
 }
 </script>
 
 <script lang="ts">
 
+class ResultCount {
+    public lines_count: number
+    public files_count: number
+    constructor(lines_count: number, files_count: number) {
+        this.lines_count = lines_count
+        this.files_count = files_count
+    }
+}
 </script>
