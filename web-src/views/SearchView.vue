@@ -2,7 +2,8 @@
     <main>
         this is search
         <SearchBox hit_msg="Enter search term" button_msg="Search" :disable="!init_finished" @search="handleSearch" />
-        <FileResult v-for="item in search_item" v-bind="{
+        <FileResult v-for="(item, index) in search_item" :key="index" v-bind="{
+            id: index,
             filePath: item.full_file_name()
             , lines: item.lines().map(
                 line => {

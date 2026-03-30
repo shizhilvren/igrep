@@ -95,6 +95,7 @@ onBeforeUnmount(() => {
 function syncEditorHeight() {
     if (!editor || !el.value) return
     const contentHeight = editor.getContentHeight()
+    console.debug('Syncing editor height to content height:', contentHeight);
     editor.layout({
         width: el.value.clientWidth,
         height: contentHeight,
