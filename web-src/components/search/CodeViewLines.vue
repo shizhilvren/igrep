@@ -76,7 +76,7 @@ onMounted(async () => {
     sizeDispose = editor.onDidContentSizeChange((e) => {
         syncEditorHeight()
     })
-    console.debug('Highlighting text with ranges:', props.highlightColNumberRanges);
+    // console.debug('Highlighting text with ranges:', props.highlightColNumberRanges);
     highlightText(props.highlightColNumberRanges)
 })
 
@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
 function syncEditorHeight() {
     if (!editor || !el.value) return
     const contentHeight = editor.getContentHeight()
-    console.debug('Syncing editor height to content height:', contentHeight);
+    // console.debug('Syncing editor height to content height:', contentHeight);
     editor.layout({
         width: el.value.clientWidth,
         height: contentHeight,
@@ -106,7 +106,7 @@ function highlightText(ranges: OneLineRange[][]) {
     if (!editor || !ranges) return
     const model = editor.getModel()
     if (!model) return
-    console.debug('Highlighting text with ranges:', ranges);
+    // console.debug('Highlighting text with ranges:', ranges);
 
     const next = ranges.map((range, lineIndex) => (
         range.map((r) => (
