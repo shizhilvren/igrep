@@ -1,10 +1,12 @@
 <template>
     <div v-if="0 != prop.lines.length">
         <div>{{ prop.filePath }}</div>
-        <div v-for="line in prop.lines" :key="line.lineNum">
-            <CodeViewOneLine :value="line.content" language="cpp" :lineNumbers="line.lineNum"
-                :highlightColNumberRanges="line.highlightColNumberRanges" />
-        </div>
+        <CodeViewLines v-bind="{
+            language: 'cpp',
+            value: prop.lines.map(line => line.content),
+            lineNumbers: prop.lines.map(line => line.lineNum),
+            highlightColNumberRanges: prop.lines.map(line => line.highlightColNumberRanges),
+        }" />
     </div>
 </template>
 
@@ -24,7 +26,8 @@ export class LineContent {
 
 <script setup lang="ts">
 import { OneLineRange } from '@/utils/utils';
-import CodeViewOneLine from './CodeViewOneLine.vue'
+import CodeViewOneLine from './CodeViewLines.vue'
+import CodeViewLines from './CodeViewLines.vue';
 
 const prop = defineProps<{
     filePath: string

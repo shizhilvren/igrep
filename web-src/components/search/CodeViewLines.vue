@@ -3,23 +3,24 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import loader from '@monaco-editor/loader'
 import * as monaco from 'monaco-editor'
 import { OneLineRange } from '@/utils/utils'
 
 
 const props = defineProps<{
-    value: string
     language: string
-    lineNumbers: number
-    highlightColNumberRanges: OneLineRange[]
+    value: string[]
+    lineNumbers: number[]
+    highlightColNumberRanges: OneLineRange[][]
 }>();
 
 const el = ref<HTMLElement | null>(null)
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let sizeDispose: monaco.IDisposable | null = null
+let removeFirstClickGuard: (() => void) | null = null
 
 onMounted(async () => {
     loader.config({ monaco })
@@ -29,17 +30,41 @@ onMounted(async () => {
         return
     }
 
+    const host = el.value
+    const guardFirstClickScrollJump = () => {
+        const scrollX = window.scrollX
+        const scrollY = window.scrollY
+        requestAnimationFrame(() => {
+            window.scrollTo(scrollX, scrollY)
+        })
+        host.removeEventListener('mousedown', guardFirstClickScrollJump)
+        removeFirstClickGuard = null
+    }
+    host.addEventListener('mousedown', guardFirstClickScrollJump)
+    removeFirstClickGuard = () => {
+        host.removeEventListener('mousedown', guardFirstClickScrollJump)
+    }
+
     editor = monaco.editor.create(el.value, {
         value: [
-            props.value,
+            ...props.value,
         ].join('\n'),
         language: props.language,
         theme: 'vs',
         readOnly: true,
+        folding: false,
+        showFoldingControls: 'never',
+        // Monaco readOnly is enough; domReadOnly can cause first-focus scroll jumps in long content.
+        domReadOnly: false,
+        // cursorStyle: 'line-thin',
+        // cursorBlinking: 'solid',
+        // hideCursorInOverviewRuler: true,
+        // renderLineHighlight: 'none',
+        // overviewRulerLanes: 0,
         automaticLayout: true,
         wordWrap: 'off',
         minimap: { enabled: false },
-        lineNumbers: (num) => String(num + props.lineNumbers - 1),
+        lineNumbers: (num) => String(props.lineNumbers[num - 1]!),
         scrollbar: {
             handleMouseWheel: false,
             vertical: 'hidden',
@@ -47,6 +72,7 @@ onMounted(async () => {
         },
     })
     syncEditorHeight()
+    // editor.focus()
     sizeDispose = editor.onDidContentSizeChange((e) => {
         syncEditorHeight()
     })
@@ -55,6 +81,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+    removeFirstClickGuard?.()
+    removeFirstClickGuard = null
     sizeDispose?.dispose()
     sizeDispose = null
     decorations?.clear()
@@ -73,16 +101,21 @@ function syncEditorHeight() {
     })
 }
 
-function highlightText(ranges: OneLineRange[]) {
+function highlightText(ranges: OneLineRange[][]) {
     if (!editor || !ranges) return
     const model = editor.getModel()
     if (!model) return
     console.debug('Highlighting text with ranges:', ranges);
 
-    const next = ranges.map((range) => ({
-        range: new monaco.Range(1, range.startCollNumber, 1, range.endCollNumber),
-        options: { inlineClassName: 'my-string-highlight' as const },
-    }))
+    const next = ranges.map((range, lineIndex) => (
+        range.map((r) => (
+
+            {
+                range: new monaco.Range(lineIndex + 1, r.startCollNumber, lineIndex + 1, r.endCollNumber),
+                options: { inlineClassName: 'my-string-highlight' as const },
+            }
+        )
+        ))).flat()
 
     if (!decorations) {
         decorations = editor.createDecorationsCollection(next)
@@ -95,6 +128,7 @@ function highlightText(ranges: OneLineRange[]) {
 
 <style scoped>
 .monaco-container {
+    width: 100%;
     /* height: 420px; */
     /* overflow: hidden; */
     /* border: 1px solid #ddd; */
@@ -103,5 +137,9 @@ function highlightText(ranges: OneLineRange[]) {
 :deep(.my-string-highlight) {
     background: rgba(255, 220, 120, 0.45);
     border-radius: 2px;
+}
+
+:deep(.monaco-editor .view-overlays .current-line) {
+    border: 0 !important;
 }
 </style>

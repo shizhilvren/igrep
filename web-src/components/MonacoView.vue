@@ -54,13 +54,19 @@ onMounted(async () => {
     editor = monaco.editor.create(el.value, {
         value: [
             'fn main() {',
-            '    let name = "igrep";',
+            '    let name = "igrep";a',
             '    println!("hello {}", name);aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaasssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             '}',
         ].join('\n'),
         language: 'rust',
         theme: 'vs',
         readOnly: true,
+        //     domReadOnly: true,
+        // cursorStyle: 'line-thin',
+        // cursorBlinking: 'solid',
+        // hideCursorInOverviewRuler: true,
+        // renderLineHighlight: 'none',
+        // overviewRulerLanes: 0,
         automaticLayout: true,
         wordWrap: 'off',
         minimap: { enabled: false },
@@ -100,4 +106,15 @@ onBeforeUnmount(() => {
     background: rgba(255, 220, 120, 0.45);
     border-radius: 2px;
 }
+
+
+
+:deep(.monaco-editor .cursor) {
+    display: none !important;
+}
+
+/* :deep(.monaco-editor .view-overlays .current-line) {
+    border: 0 !important;
+} */
+
 </style>
