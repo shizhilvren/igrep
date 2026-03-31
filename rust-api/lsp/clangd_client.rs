@@ -4,7 +4,8 @@ use lsp_types::{
     ClientCapabilities, CompletionParams, DidOpenTextDocumentParams, DocumentSymbolParams,
     InitializeParams, InitializeResult, InitializedParams, Position,
     TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri, WindowClientCapabilities,
+    TextDocumentPositionParams, Uri, WindowClientCapabilities, lsp_notification, lsp_request,
+    notification::Notification,
 };
 use regex_syntax::ast::print;
 use serde_json::Value;
@@ -14,6 +15,8 @@ use std::{
     process::{Child, Command, Stdio},
     str::FromStr,
 };
+
+use log::{debug, error, info, warn};
 
 /// A simple LSP client for interacting with clangd
 pub struct ClangdClient {
@@ -36,13 +39,19 @@ impl ClangdClient {
             true => "verbose",
             false => "info",
         };
+        let jobs = std::thread::available_parallelism()
+            .map(|n| n.get().saturating_mul(2))
+            .unwrap_or(2)
+            .to_string();
         // Start clangd process
         let child = Command::new("clangd")
             .arg(format!("--compile-commands-dir={}", compile_commands_dir))
             .arg(format!("--log={}", log_level))
             .arg("--background-index")
             .arg("--pch-storage=memory")
-            .args(["-j","60"])
+            .arg("--background-index-priority=normal")
+            .arg("-j")
+            .arg(&jobs)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(log_file)
@@ -222,8 +231,9 @@ impl ClangdClient {
     }
 
     /// Open a file in the LSP server
-    pub fn open_file(&mut self, file_path: &str, content: String) -> Result<()> {
+    pub fn open_file(&mut self, file_path: &str) -> Result<()> {
         let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let content = std::fs::read_to_string(file_path)?;
 
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -235,6 +245,16 @@ impl ClangdClient {
         };
 
         self.send_notification("textDocument/didOpen", params)
+    }
+
+    pub fn did_close(&mut self, file_path: &str) -> Result<()> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = lsp_types::DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+        };
+
+        self.send_notification("textDocument/didClose", params)
     }
 
     pub fn get_code_lens(&mut self, file_path: &str, line: u32, character: u32) -> Result<Value> {
@@ -366,44 +386,44 @@ impl ClangdClient {
         self.reader(id)
     }
 
-    pub fn reader<R: serde::de::DeserializeOwned>(&mut self, id: i64) -> Result<R> {
-        // Read and parse the response
-
+    fn get_response(&mut self) -> Result<Value> {
+        let stdout = self
+            .server_process
+            .stdout
+            .as_mut()
+            .ok_or_else(|| anyhow!("Failed to get stdout"))?;
+        let mut reader = BufReader::new(stdout);
+        // Read headers
+        let mut content_length = None;
+        let mut line = String::new();
         loop {
-            let stdout = self
-                .server_process
-                .stdout
-                .as_mut()
-                .ok_or_else(|| anyhow!("Failed to get stdout"))?;
-            let mut reader = BufReader::new(stdout);
-            // Read headers
-            let mut content_length = None;
-            let mut line = String::new();
-            loop {
-                line.clear();
-                reader.read_line(&mut line)?;
-                if line == "\r\n" || line.is_empty() {
-                    break;
-                }
-                if line.starts_with("Content-Length: ") {
-                    content_length =
-                        Some(line["Content-Length: ".len()..].trim().parse::<usize>()?);
-                }
+            line.clear();
+            reader.read_line(&mut line)?;
+            if line == "\r\n" || line.is_empty() {
+                break;
             }
-
-            // Read the response body
-            let content_length =
-                content_length.ok_or_else(|| anyhow!("No Content-Length header"))?;
-            let mut buffer = vec![0; content_length];
-            reader.read_exact(&mut buffer)?;
-
-            // Parse the response
-            let response: serde_json::Value = serde_json::from_slice(&buffer)?;
-
-            // Check for errors
-            if let Some(error) = response.get("error") {
-                return Err(anyhow!("LSP error: {}", error));
+            if line.starts_with("Content-Length: ") {
+                content_length = Some(line["Content-Length: ".len()..].trim().parse::<usize>()?);
             }
+        }
+
+        // Read the response body
+        let content_length = content_length.ok_or_else(|| anyhow!("No Content-Length header"))?;
+        let mut buffer = vec![0; content_length];
+        reader.read_exact(&mut buffer)?;
+
+        // Parse the response
+        let response: serde_json::Value = serde_json::from_slice(&buffer)?;
+        // Check for errors
+        if let Some(error) = response.get("error") {
+            return Err(anyhow!("LSP error: {}", error));
+        }
+        return Ok(response);
+    }
+    pub fn reader<R: serde::de::DeserializeOwned>(&mut self, id: i64) -> Result<R> {
+        loop {
+            // Read and parse the response
+            let response = self.get_response()?;
 
             // Extract and deserialize result
             let result = response["result"].clone();
@@ -411,10 +431,13 @@ impl ClangdClient {
             if id_result == id {
                 return Ok(serde_json::from_value(result)?);
             } else {
-                self.handle_other_response(response)?;
+                let break_out = self.handle_other_response(&response)?;
+                if break_out {
+                    break;
+                }
             }
         }
-        Err(anyhow!("No response found"))
+        return Ok(serde_json::from_str("{}")?);
     }
     /// Send a notification to the LSP server (no response expected)
     fn send_notification<P: serde::Serialize>(&mut self, method: &str, params: P) -> Result<()> {
@@ -466,8 +489,8 @@ impl ClangdClient {
         Ok(())
     }
 
-    fn handle_other_response(&mut self, response: serde_json::Value) -> Result<()> {
-        println!("Received other response: {}", response);
+    fn handle_other_response(&mut self, response: &serde_json::Value) -> Result<bool> {
+        // println!("Received other response: {}", response);
         let method = response
             .get("method")
             .and_then(|m| m.as_str())
@@ -480,21 +503,42 @@ impl ClangdClient {
                     serde_json::from_value(parse)?;
                 match params.token {
                     lsp_types::ProgressToken::String(token) => {
-                        println!("Progress created with token: {}", token);
+                        debug!("Progress created with token: {}", token);
                         self.send_response(id, Value::Null)?;
                     }
                     lsp_types::ProgressToken::Number(token) => {
-                        println!("Progress created with token: {}", token);
+                        debug!("Progress created with token: {}", token);
                     }
+                }
+            }
+            "$/progress" => {
+                let params: lsp_types::ProgressParams = serde_json::from_value(parse)?;
+                match params.value {
+                    lsp_types::ProgressParamsValue::WorkDone(work_done) => match work_done {
+                        lsp_types::WorkDoneProgress::Begin(begin) => {
+                            info!(
+                                "Progress begin: {} - {}",
+                                begin.title,
+                                begin.message.unwrap_or_default()
+                            );
+                        }
+                        lsp_types::WorkDoneProgress::Report(report) => {
+                            info!("Progress report: {}", report.message.unwrap_or_default());
+                        }
+                        lsp_types::WorkDoneProgress::End(end) => {
+                            info!("Progress end: {}", end.message.unwrap_or_default());
+                            return Ok(true);
+                        }
+                    },
                 }
             }
             _ => {
                 // Unknown notification
-                println!("Unknown notification: {}", response);
+                warn!("Unknown notification: {}", response);
             }
         }
         // Handle other types of responses
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -503,5 +547,66 @@ impl Drop for ClangdClient {
         // Try to gracefully shut down the server
         let _ = self.send_notification("exit", serde_json::Value::Null);
         let _ = self.server_process.kill();
+    }
+}
+
+impl ClangdClient {
+    pub fn handle_semantics(
+        &mut self,
+        file_path: &str,
+        tokens: lsp_types::SemanticTokens,
+    ) -> Result<()> {
+        let binding = std::fs::read_to_string(file_path)?;
+        let lines = binding.lines().collect::<Vec<_>>();
+        let ans = tokens
+            .data
+            .into_iter()
+            .scan((0, 0), |(row, col), token| {
+                match token.delta_line {
+                    0 => {
+                        *col += token.delta_start;
+                    }
+                    _ => {
+                        *row += token.delta_line;
+                        *col = token.delta_start;
+                    }
+                }
+                Some((row.clone(), col.clone(), token.length))
+            })
+            .map(|(row, col, len)| {
+                let word = lines.get(row as usize).and_then(|line| {
+                    line.chars()
+                        .skip(col as usize)
+                        .take(len as usize)
+                        .collect::<String>()
+                        .into()
+                });
+                (row, col, word)
+            })
+            .collect::<Vec<_>>();
+        ans.into_iter().try_for_each(|(row, col, word)| {
+            // info!(
+            //     "Semantic token at {}:{} - {}",
+            //     row,
+            //     col,
+            //     word.clone().unwrap()
+            // );
+            match self.get_hover(file_path, row, col) {
+                Ok(hover) => {
+                    let hover = serde_json::from_value::<lsp_types::Hover>(hover);
+                    match hover {
+                        Ok(hover) => {
+                            info!("{}:{} {} hover info: {:?}", row, col, word.unwrap(), hover);
+                        }
+                        Err(e) => {
+                            error!("Failed to parse hover response: {}", e);
+                        }
+                    }
+                }
+                Err(e) => error!("获取悬停信息时出错: {}", e),
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        Ok(())
     }
 }

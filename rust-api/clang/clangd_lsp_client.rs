@@ -1,12 +1,14 @@
+use crate::lsp;
 use crate::lsp::clangd_client::ClangdClient;
-use anyhow::Result;
-use std::{fs};
+use anyhow::{Result, anyhow};
+use log::{error, info};
+use serde_json::Value;
+use std::fs;
+use std::io::BufRead;
 
 pub fn main(
-    file_path: &str,
+    file_list: &str,
     debug: bool,
-    line: u32,
-    column: u32,
     log_file: String,
     compile_commands_dir: &str,
 ) -> Result<()> {
@@ -15,95 +17,120 @@ pub fn main(
     let mut client = ClangdClient::new(&log_file, compile_commands_dir, debug)?;
     println!("已连接到 clangd 服务器");
 
-    let file_path = fs::canonicalize(file_path)?;
-    let file_path = file_path.to_str().unwrap();
-    let file_content = fs::read_to_string(file_path)?;
+    let file_content = fs::read(file_list)?;
+    let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
+        .lines()
+        .filter_map(Result::ok)
+        .filter(|file| !file.is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+    let first_file = files_list.first().ok_or_else(|| anyhow!("文件列表为空"))?;
 
     // 在 LSP 服务器中打开文件
-    client.open_file(file_path, file_content)?;
-    println!("已打开文件: {}", file_path);
+    client.open_file(first_file)?;
+    info!("已打开文件: {}", first_file);
 
-    println!("获取位置 {}:{} 的信息...", line, column);
+    client.did_close(first_file)?;
+    info!("已关闭文件: {}", first_file);
 
-    // 获取悬停信息
-    println!("\n=== 悬停信息 ===");
-    match client.get_hover(file_path, line, column) {
-        Ok(hover) => println!("{}", serde_json::to_string_pretty(&hover)?),
-        Err(e) => println!("获取悬停信息时出错: {}", e),
-    }
+    let _: Value = client.reader(-1)?;
+    info!("LSP index finish");
 
-    match client.get_code_lens(file_path, line, column) {
-        Ok(codelens) => println!("{}", serde_json::to_string_pretty(&codelens)?),
-        Err(e) => println!("获取 CodeLens 时出错: {}", e),
-    }
-
-    // 获取 AST
-    match client.get_ast(file_path) {
-        Ok(ast) => println!("{}", serde_json::to_string_pretty(&ast)?),
-        Err(e) => println!("获取 AST 时出错: {}", e),
-    }
-
-    // 获取补全建议
-    println!("\n=== 代码补全 ===");
-    match client.get_completions(file_path, line, column) {
-        Ok(completions) => println!("{}", serde_json::to_string_pretty(&completions)?),
-        Err(e) => println!("获取代码补全时出错: {}", e),
-    }
-
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
-
-    // 获取语义标记
-    match client.get_semantic_tokens_full(file_path) {
-        Ok(tokens) => println!("{}", serde_json::to_string_pretty(&tokens)?),
-        Err(e) => println!("获取语义标记时出错: {}", e),
-    }
-
-    println!("\n=== 符号信息 ===");
-    match client.get_symbols(file_path) {
-        Ok(symbols) => {
-            println!("{}", serde_json::to_string_pretty(&symbols)?);
+    files_list.into_iter().try_for_each(|file| {
+        client.open_file(&file)?;
+        match client.get_semantic_tokens_full(&file) {
+            Ok(tokens) => {
+                let tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
+                info!("{:?}", tokens);
+                client.handle_semantics(&file, tokens)?;
+            }
+            Err(e) => error!("获取语义标记时出错: {}", e),
         }
-        Err(e) => println!("获取符号信息时出错: {}", e),
-    }
+        client.did_close(&file)?;
+        Ok::<(), anyhow::Error>(())
+    })?;
 
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
-    // 获取定义
-    println!("\n=== 定义位置 ===");
-    match client.goto_definition(file_path, line, column) {
-        Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
-        Err(e) => println!("获取定义位置时出错: {}", e),
-    }
+    // println!("获取位置 {}:{} 的信息...", line, column);
 
-    let _a:() = client.reader(-1)?;
-    println!("\nLSP 客户端示例运行完成");
+    // // 获取悬停信息
+    // println!("\n=== 悬停信息 ===");
+    // match client.get_hover(file_path, line, column) {
+    //     Ok(hover) => println!("{}", serde_json::to_string_pretty(&hover)?),
+    //     Err(e) => println!("获取悬停信息时出错: {}", e),
+    // }
+
+    // match client.get_code_lens(file_path, line, column) {
+    //     Ok(codelens) => println!("{}", serde_json::to_string_pretty(&codelens)?),
+    //     Err(e) => println!("获取 CodeLens 时出错: {}", e),
+    // }
+
+    // // 获取 AST
+    // match client.get_ast(file_path) {
+    //     Ok(ast) => println!("{}", serde_json::to_string_pretty(&ast)?),
+    //     Err(e) => println!("获取 AST 时出错: {}", e),
+    // }
+
+    // // 获取补全建议
+    // println!("\n=== 代码补全 ===");
+    // match client.get_completions(file_path, line, column) {
+    //     Ok(completions) => println!("{}", serde_json::to_string_pretty(&completions)?),
+    //     Err(e) => println!("获取代码补全时出错: {}", e),
+    // }
+
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+
+    // // 获取语义标记
+    // match client.get_semantic_tokens_full(file_path) {
+    //     Ok(tokens) => println!("{}", serde_json::to_string_pretty(&tokens)?),
+    //     Err(e) => println!("获取语义标记时出错: {}", e),
+    // }
+
+    // println!("\n=== 符号信息 ===");
+    // match client.get_symbols(file_path) {
+    //     Ok(symbols) => {
+    //         println!("{}", serde_json::to_string_pretty(&symbols)?);
+    //     }
+    //     Err(e) => println!("获取符号信息时出错: {}", e),
+    // }
+
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+    // // 获取定义
+    // println!("\n=== 定义位置 ===");
+    // match client.goto_definition(file_path, line, column) {
+    //     Ok(definition) => println!("{}", serde_json::to_string_pretty(&definition)?),
+    //     Err(e) => println!("获取定义位置时出错: {}", e),
+    // }
+
+    // let _a: Value = client.reader(-1)?;
+    info!("LSP 客户端示例运行完成");
 
     Ok(())
 }

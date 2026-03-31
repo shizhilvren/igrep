@@ -7,6 +7,7 @@ lin.txt
 compile_commands.json
 test/*
 ngram-index/*
+ngram-index
 launch.json
 igrep_web/.vscode
 node_modules/*

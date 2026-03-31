@@ -92,24 +92,17 @@ struct SearchArgs {
 
 #[derive(Parser)]
 struct ClangIndexArgs {
-    /// Sets the file to be indexed
-    #[arg(required = true)]
-    file: String,
-
     #[arg(long, required = true)]
     compile_commands_dir: String,
 
     #[arg(long, required = true)]
     log: String,
 
-    #[arg(long, required = true)]
-    line: u32,
-
-    #[arg(long, required = true)]
-    column: u32,
-
     #[arg(long, default_value_t = false)]
     debug: bool,
+
+    #[arg(short, long, required = true)]
+    file_list: String,
 }
 
 fn main() -> Result<()> {
@@ -128,10 +121,8 @@ fn main() -> Result<()> {
         Commands::ClangIndex(args) => {
             // Call the Clang indexing logic with the provided file
             clang::clangd_lsp_client::main(
-                &args.file,
+                &args.file_list,
                 args.debug,
-                args.line,
-                args.column,
                 args.log.clone(),
                 &args.compile_commands_dir,
             )
