@@ -13,6 +13,7 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
 let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
+let hoverDispose: monaco.IDisposable | null = null
 
 function syncEditorHeight() {
     if (!editor || !el.value) return
@@ -67,6 +68,7 @@ onMounted(async () => {
         // hideCursorInOverviewRuler: true,
         // renderLineHighlight: 'none',
         // overviewRulerLanes: 0,
+        hover: { enabled: true },
         automaticLayout: true,
         wordWrap: 'off',
         minimap: { enabled: false },
@@ -77,6 +79,36 @@ onMounted(async () => {
             horizontal: 'auto',
         },
     })
+
+    hoverDispose = monaco.languages.registerHoverProvider('rust', {
+        provideHover(model, position) {
+            console.debug('Hover at', position);
+            const word = model.getWordAtPosition(position)
+            if (!word) return null
+
+            if (word.word === 'name') {
+                return {
+                    range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+                    contents: [
+                        { value: '### variable `bCOUJqDnJG`  \n\n---\nType: `const char *`  \nValue = `&\"bCOUJqDnJG\"[0]`  \nPassed as name  \n\n---\n```cpp\n// In main\nconst char *bCOUJqDnJG = \"bCOUJqDnJG\"\n```' },
+                    ],
+                }
+            }
+
+            if (word.word === 'println') {
+                return {
+                    range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+                    contents: [
+                        { value: '**宏:** `println!`' },
+                        { value: '向标准输出打印格式化字符串。' },
+                    ],
+                }
+            }
+
+            return null
+        },
+    })
+
     syncEditorHeight()
     sizeDispose = editor.onDidContentSizeChange(() => {
         syncEditorHeight()
@@ -85,6 +117,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+    hoverDispose?.dispose()
+    hoverDispose = null
     sizeDispose?.dispose()
     sizeDispose = null
     decorations?.clear()
@@ -116,5 +150,4 @@ onBeforeUnmount(() => {
 /* :deep(.monaco-editor .view-overlays .current-line) {
     border: 0 !important;
 } */
-
 </style>

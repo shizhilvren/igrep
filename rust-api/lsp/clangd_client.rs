@@ -233,7 +233,10 @@ impl ClangdClient {
     /// Open a file in the LSP server
     pub fn open_file(&mut self, file_path: &str) -> Result<()> {
         let uri = Uri::from_str(&format!("file://{}", file_path))?;
-        let content = std::fs::read_to_string(file_path)?;
+        let content = std::fs::read_to_string(file_path).map_err(|e| {
+            error!("Failed to read file {}: {}", file_path, e);
+            e
+        })?;
 
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -599,7 +602,7 @@ impl ClangdClient {
                             info!("{}:{} {} hover info: {:?}", row, col, word.unwrap(), hover);
                         }
                         Err(e) => {
-                            error!("Failed to parse hover response: {}", e);
+                            warn!("Failed to parse hover response: {}", e);
                         }
                     }
                 }
