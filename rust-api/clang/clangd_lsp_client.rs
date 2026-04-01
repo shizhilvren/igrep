@@ -1,10 +1,13 @@
 use crate::lsp;
+use crate::lsp::builder::Builder;
 use crate::lsp::clangd_client::ClangdClient;
+use crate::lsp::index::FileIndex;
 use anyhow::{Result, anyhow};
 use log::{error, info};
 use serde_json::Value;
 use std::fs;
 use std::io::BufRead;
+use std::path::PathBuf;
 
 pub fn main(
     file_list: &str,
@@ -24,31 +27,41 @@ pub fn main(
         .filter(|file| !file.is_empty())
         .map(|line| line.trim().to_string())
         .collect();
+
     let first_file = files_list.first().ok_or_else(|| anyhow!("文件列表为空"))?;
 
-    // 在 LSP 服务器中打开文件
-    client.open_file(first_file)?;
-    info!("已打开文件: {}", first_file);
+    // // 在 LSP 服务器中打开文件
+    // client.open_file(first_file)?;
+    // info!("已打开文件: {}", first_file);
 
-    client.did_close(first_file)?;
-    info!("已关闭文件: {}", first_file);
+    // client.did_close(first_file)?;
+    // info!("已关闭文件: {}", first_file);
 
-    let _: Value = client.reader(-1)?;
-    info!("LSP index finish");
+    // let _: Value = client.reader(-1)?;
+    // info!("LSP index finish");
 
-    files_list.into_iter().try_for_each(|file| {
-        client.open_file(&file)?;
-        match client.get_semantic_tokens_full(&file) {
-            Ok(tokens) => {
-                let tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
-                info!("{:?}", tokens);
-                client.handle_semantics(&file, tokens)?;
-            }
-            Err(e) => error!("获取语义标记时出错: {}", e),
-        }
-        client.did_close(&file)?;
+    let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
+    files_list.into_iter().try_for_each(|file_name| {
+        let file_index = FileIndex::from(file_name);
+        file_index_builder.insert(file_index)?;
         Ok::<(), anyhow::Error>(())
     })?;
+    let builder = Builder::try_from(file_index_builder)?;
+    builder.dump(PathBuf::from("./lsp_index").as_path())?;
+
+    // files_list.into_iter().try_for_each(|file| {
+    //     client.open_file(&file)?;
+    //     match client.get_semantic_tokens_full(&file) {
+    //         Ok(tokens) => {
+    //             let tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
+    //             info!("{:?}", tokens);
+    //             client.handle_semantics(&file, tokens)?;
+    //         }
+    //         Err(e) => error!("获取语义标记时出错: {}", e),
+    //     }
+    //     client.did_close(&file)?;
+    //     Ok::<(), anyhow::Error>(())
+    // })?;
 
     // println!("获取位置 {}:{} 的信息...", line, column);
 

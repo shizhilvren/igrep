@@ -8,6 +8,8 @@ compile_commands.json
 test/*
 ngram-index/*
 ngram-index
+lsp_index/*
+lsp_index
 launch.json
 igrep_web/.vscode
 node_modules/*
