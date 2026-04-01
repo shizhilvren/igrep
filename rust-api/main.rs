@@ -95,6 +95,9 @@ struct ClangIndexArgs {
     #[arg(long, required = true)]
     compile_commands_dir: String,
 
+    #[arg(short, long, default_value = "lsp-index")]
+    config: String,
+
     #[arg(long, required = true)]
     log: String,
 
@@ -125,6 +128,7 @@ fn main() -> Result<()> {
                 args.debug,
                 args.log.clone(),
                 &args.compile_commands_dir,
+                &args.config,
             )
             .map_err(|e| anyhow!("Failed to run Clang index: {}", e))
         }

@@ -1,8 +1,9 @@
 use anyhow::{Result, anyhow};
-use log::warn;
+use log::{info, warn};
 use rayon::iter::*;
 use std::{
     collections::HashSet,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -35,6 +36,13 @@ impl FileIndexBuilder {
 
 impl Builder {
     pub fn dump(&self, base_path: &Path) -> Result<()> {
+        info!("Dumping LSP index to {:?}", base_path);
+        if base_path.exists() {
+            info!("Removing old dump directory: {:?}", base_path);
+            std::fs::remove_dir_all(base_path).map_err(|e| {
+                anyhow!("Failed to remove old dump directory {:?}: {}", base_path, e)
+            })?;
+        }
         self.dump_file_data(base_path)?;
         Ok(())
     }

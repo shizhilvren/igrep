@@ -14,6 +14,7 @@ pub fn main(
     debug: bool,
     log_file: String,
     compile_commands_dir: &str,
+    config: &str,
 ) -> Result<()> {
     // 初始化客户端，连接到本地运行的 clangd 服务器
     println!("正在连接到 clangd 服务器...");
@@ -47,7 +48,7 @@ pub fn main(
         Ok::<(), anyhow::Error>(())
     })?;
     let builder = Builder::try_from(file_index_builder)?;
-    builder.dump(PathBuf::from("./lsp_index").as_path())?;
+    builder.dump(PathBuf::from(config).as_path())?;
 
     // files_list.into_iter().try_for_each(|file| {
     //     client.open_file(&file)?;
