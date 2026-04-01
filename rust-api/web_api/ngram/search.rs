@@ -1,6 +1,6 @@
 use crate::{
     ngram::data::FromToData,
-    web_api::{
+    web_api::ngram::{
         data::{Range, VecU8},
         index::{FileIndex, NgramIndex, NgramIndexVec},
     },

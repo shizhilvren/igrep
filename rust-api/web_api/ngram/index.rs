@@ -6,7 +6,7 @@ use std::{
 
 use wasm_bindgen::prelude::*;
 
-use crate::web_api::path::GetPath;
+use crate::web_api::ngram::path::GetPath;
 
 #[wasm_bindgen]
 pub struct NgramIndexVec {

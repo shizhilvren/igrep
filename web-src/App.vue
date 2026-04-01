@@ -22,7 +22,7 @@ import HelloWorld from './components/HelloWorld.vue'
     <RouterLink to="/search">Go to search</RouterLink>
     <!-- <RouterLink to="/index">Go to Index</RouterLink> -->
   </nav>
-  <main>
+  <main class="app-main">
     <RouterView />
 
     <!-- <div class="common-layout">
@@ -40,6 +40,17 @@ import HelloWorld from './components/HelloWorld.vue'
 </template>
 
 <style scoped>
+.app-main {
+  flex: 1;
+  min-height: 0;
+}
+
+:global(#app) {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 header {
   line-height: 1.5;
   /* max-height: 100vh; */

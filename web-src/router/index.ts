@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router
 import HomeView from '../views/HomeView.vue'
 import SearchView from '@/views/SearchView.vue'
 import FilesView from '@/views/FilesView.vue'
+import FileView from '@/views/FileView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -27,7 +28,7 @@ const router = createRouter({
     {
       path:"/files/:filePath(.*)*",
       name:"files",
-      component: FilesView,
+      component: FileView,
       props: route => ({ filePath: route.params.filePath }),
     }
   ],
