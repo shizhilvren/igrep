@@ -1,8 +1,30 @@
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::{collections::HashSet, fs};
 
 use crate::lsp::index::FileIndex;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TreeData {
+    File(FileData),
+    Dir(DirData),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirData {
+    files: Vec<FileName>,
+    dirs: Vec<DirName>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq)]
+pub struct FileName {
+    name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq)]
+pub struct DirName {
+    name: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileData {
@@ -29,6 +51,69 @@ impl TryFrom<&FileIndex> for FileData {
 }
 
 impl FromToData<'_> for FileData {}
+impl FromToData<'_> for TreeData {}
+impl FromToData<'_> for DirData {}
+
+impl TryFrom<String> for FileName {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self> {
+        let path: &std::path::Path = std::path::Path::new(&value);
+        let level = value.find("/");
+        level.map_or_else(
+            || Ok(()),
+            |a| {
+                Err(anyhow!(
+                    "Invalid file name: {:?} {a}, it should contain at least one directory level",
+                    value
+                ))
+            },
+        )?;
+        path.has_root().then(|| ()).map_or_else(
+            || Ok(()),
+            |_| {
+                Err(anyhow!(
+                    "Invalid file na already existsme have root: {:?} ",
+                    value
+                ))
+            },
+        )?;
+        Ok(Self { name: value })
+    }
+}
+
+impl TryFrom<String> for DirName {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self> {
+        let path: &std::path::Path = std::path::Path::new(&value);
+        let level = value.find("/");
+        level.map_or_else(
+            || Ok(()),
+
+            |a| {
+                Err(anyhow!(
+                    "Invalid directory name: {:?} {a}, it should contain at least one directory level",
+                    value
+                ))
+            },
+        )?;
+        path.has_root().then(|| ()).map_or_else(
+            || Ok(()),
+            |_| Err(anyhow!("Invalid directory name: {:?}", value)),
+        )?;
+        Ok(Self { name: value })
+    }
+}
+
+impl From<(HashSet<FileName>, HashSet<DirName>)> for DirData {
+    fn from(value: (HashSet<FileName>, HashSet<DirName>)) -> Self {
+        Self {
+            files: value.0.into_iter().collect(),
+            dirs: value.1.into_iter().collect(),
+        }
+    }
+}
 
 pub trait FromToData<'a> {
     fn to_data(&self) -> Result<Vec<u8>>
