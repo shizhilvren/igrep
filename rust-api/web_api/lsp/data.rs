@@ -1,26 +1,26 @@
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(js_namespace = "lsp")]
+#[wasm_bindgen]
 pub struct TreeData {
     data: crate::lsp::data::TreeData,
 }
 
-#[wasm_bindgen(js_namespace = "lsp")]
+#[wasm_bindgen]
 pub struct FileData {
     data: crate::lsp::data::FileData,
 }
 
-#[wasm_bindgen(js_namespace = "lsp")]
+#[wasm_bindgen]
 pub struct DirData {
     data: crate::lsp::data::DirData,
 }
 
-#[wasm_bindgen(js_namespace = "lsp")]
+#[wasm_bindgen]
 pub struct FileName {
     data: crate::lsp::data::FileName,
 }
 
-#[wasm_bindgen(js_namespace = "lsp")]
+#[wasm_bindgen]
 pub struct DirName {
     data: crate::lsp::data::DirName,
 }
