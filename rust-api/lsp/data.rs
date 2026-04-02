@@ -16,12 +16,12 @@ pub struct DirData {
     dirs: Vec<DirName>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq, Clone)]
 pub struct FileName {
     name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, Hash, PartialEq, Clone)]
 pub struct DirName {
     name: String,
 }
@@ -29,6 +29,33 @@ pub struct DirName {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileData {
     lines: Vec<String>,
+}
+
+impl FileData {
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+}
+
+impl DirData {
+    pub fn files(&self) -> &[FileName] {
+        &self.files
+    }
+    pub fn dirs(&self) -> &[DirName] {
+        &self.dirs
+    }
+}
+
+impl FileName {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl DirName {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl TryFrom<&FileIndex> for FileData {

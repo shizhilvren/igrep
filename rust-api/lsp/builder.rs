@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
-use log::{info, warn};
+use log::{debug, info, warn};
 use rayon::iter::*;
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path},
+    path::Path,
 };
 
 use crate::lsp::{
@@ -101,35 +101,17 @@ impl From<(PathIndex, TreeData)> for TreeBuilder {
     }
 }
 
-impl TryFrom<FileIndexBuilder> for Builder {
+impl TryFrom<Vec<FileBuilder>> for Builder {
     type Error = anyhow::Error;
 
-    fn try_from(value: FileIndexBuilder) -> Result<Self> {
-        let datas = value
-            .path_set
-            .into_par_iter()
-            .filter_map(|index| {
-                FileBuilder::try_from(index.clone()).map_or_else(
-                    |e| {
-                        warn!(
-                            "Failed to create FileBuilder for index {:?}, error: {:?}",
-                            index, e
-                        );
-                        None
-                    },
-                    |d| Some(d),
-                )
-            })
-            .collect::<Vec<FileBuilder>>();
-
+    fn try_from(file_builders: Vec<FileBuilder>) -> Result<Self> {
         let mut path_dir_set: HashMap<PathIndex, (HashSet<FileName>, HashSet<DirName>)> =
             HashMap::new();
-        datas.iter().try_for_each(|a| {
+        file_builders.iter().try_for_each(|a| {
             let file_index = a.file_index.clone();
             let ret = file_index
                 .path()
                 .ancestors()
-                .skip(1)
                 .filter_map(|p| {
                     let name = p.file_name().and_then(|n| n.to_str());
                     name.map(|name| (p.to_path_buf(), name.to_string()))
@@ -139,17 +121,15 @@ impl TryFrom<FileIndexBuilder> for Builder {
                     let is_file = p.is_file();
                     let p = p
                         .parent()
-                        .map_or(
-                            Err(anyhow!("{} mast have parent", &name)),
-                            |_| Ok(p.clone()),
-                        )
+                        .map_or(Err(anyhow!("{} mast have parent", &name)), |p| Ok(p))
                         .and_then(|p| {
-                            let path_index = PathIndex::from(p);
+                            let path_index = PathIndex::from(p.to_path_buf());
                             Ok((path_index, name, is_dir, is_file))
                         })
                         .and_then(|(path_index, name, is_dir, is_file)| {
                             let insert_ret = match (is_dir, is_file) {
                                 (true, false) => {
+                                    // debug!("Insert directory {:?} to path index {:?}", name, path_index);
                                     let ret = path_dir_set
                                         .entry(path_index)
                                         .or_insert((HashSet::new(), HashSet::new()))
@@ -158,6 +138,7 @@ impl TryFrom<FileIndexBuilder> for Builder {
                                     Ok(())
                                 }
                                 (false, true) => {
+                                    // debug!("Insert file {:?} to path index {:?}", name, path_index);
                                     let ret = path_dir_set
                                         .entry(path_index)
                                         .or_insert((HashSet::new(), HashSet::new()))
@@ -183,12 +164,12 @@ impl TryFrom<FileIndexBuilder> for Builder {
         })?;
 
         let mut path_file_set: HashMap<PathIndex, FileData> = HashMap::new();
-        datas.into_iter().try_for_each(|a| {
+        file_builders.into_iter().try_for_each(|a| {
             let file_index = a.file_index;
             let file_data = a.file_data;
             let path = file_index.path();
             let path_index = PathIndex::from(path.clone());
-            let ans = path_file_set
+            path_file_set
                 .insert(path_index, file_data)
                 .map_or(Ok(()), |_| Err(anyhow!("{:?} is exist", path)))?;
             Ok::<(), anyhow::Error>(())
@@ -212,5 +193,29 @@ impl TryFrom<FileIndexBuilder> for Builder {
             .map(TreeBuilder::from)
             .collect::<Vec<_>>();
         Ok(Self { datas: path_set })
+    }
+}
+
+impl TryFrom<FileIndexBuilder> for Builder {
+    type Error = anyhow::Error;
+
+    fn try_from(value: FileIndexBuilder) -> Result<Self> {
+        let datas = value
+            .path_set
+            .into_par_iter()
+            .filter_map(|index| {
+                FileBuilder::try_from(index.clone()).map_or_else(
+                    |e| {
+                        warn!(
+                            "Failed to create FileBuilder for index {:?}, error: {:?}",
+                            index, e
+                        );
+                        None
+                    },
+                    |d| Some(d),
+                )
+            })
+            .collect::<Vec<FileBuilder>>();
+        Self::try_from(datas)
     }
 }

@@ -19,11 +19,12 @@ pub struct TreeDataPath<'a> {
 impl TreeDataPath<'_> {
     pub fn dump(&self, base_path: &Path, tree_data: &TreeData) -> Result<()> {
         let path = self.path(base_path);
-        debug!("Dump tree data to path: {:?}", &path);
-        std::fs::create_dir_all(&path).map_err(|e| anyhow!("fail to create dir {:?} {:?}", &path, e))?;
+        // debug!("Dump tree data to path: {:?}", &path);
+        std::fs::create_dir_all(&path)
+            .map_err(|e| anyhow!("fail to create dir {:?} {:?}", &path, e))?;
         let file_path = match tree_data {
-            TreeData::File(_) => path.join("file.data"),
-            TreeData::Dir(_) => path.join("dir.data"),
+            TreeData::File(_) => path.join("tree.data"),
+            TreeData::Dir(_) => path.join("tree.data"),
         };
         let mut file = std::fs::File::create(file_path.as_path())
             .map_err(|e| anyhow!("create file {:?} fail. {:?}", self.full_path, e))?;
@@ -44,10 +45,6 @@ impl<'a> From<&'a PathIndex> for TreeDataPath<'a> {
 impl GetPath for TreeDataPath<'_> {
     fn path(&self, base_path: &Path) -> PathBuf {
         let index_path = self.full_path.path();
-        debug!(
-            "Get path for file index: {:?} with base path: {:?}",
-            index_path, base_path
-        );
         let index_path = match index_path.is_absolute() {
             true => index_path
                 .strip_prefix("/")

@@ -11,7 +11,6 @@ pub struct GlobalData {
     indexs: HashSet<NgramIndex>,
 }
 
-#[wasm_bindgen]
 #[derive(Serialize, Deserialize)]
 pub struct FileData {
     // file_path: String,
