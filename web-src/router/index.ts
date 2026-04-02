@@ -26,8 +26,8 @@ const router = createRouter({
       component: () => import('../views/AboutView.vue'),
     },
     {
-      path:"/files/:filePath(.*)*",
-      name:"files",
+      path: "/files/:filePath(.*)*",
+      name: "files",
       component: FileView,
       props: route => ({ filePath: route.params.filePath }),
     }

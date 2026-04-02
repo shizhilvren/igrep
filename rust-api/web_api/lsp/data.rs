@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 
+use crate::lsp::data::FromToData;
+
 #[wasm_bindgen]
 pub struct TreeData {
     data: crate::lsp::data::TreeData,
@@ -45,6 +47,11 @@ impl TreeData {
             crate::lsp::data::TreeData::Dir(dir_data) => Some(DirData::from(dir_data)),
             _ => None,
         }
+    }
+
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: Vec<u8>) -> Self {
+        Self::try_from(&data).expect("data not correct")
     }
 }
 
@@ -113,5 +120,13 @@ impl From<crate::lsp::data::FileName> for FileName {
 impl From<crate::lsp::data::DirName> for DirName {
     fn from(data: crate::lsp::data::DirName) -> Self {
         Self { data }
+    }
+}
+
+impl TryFrom<&Vec<u8>> for TreeData {
+    type Error = anyhow::Error;
+    fn try_from(value: &Vec<u8>) -> anyhow::Result<Self> {
+        let d = crate::lsp::data::TreeData::from_data(value.as_slice())?;
+        Ok(TreeData::from(d))
     }
 }
