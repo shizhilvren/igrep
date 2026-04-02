@@ -1,8 +1,5 @@
 use crate::ngram::path::GetPath as ngramGetPath;
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use wasm_bindgen::prelude::*;
 

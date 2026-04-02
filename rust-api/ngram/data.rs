@@ -1,12 +1,11 @@
 use crate::ngram::builder::FileContent;
-use crate::ngram::index::{FileIndex, FileLineIndex, FilesLinesIndex, LineIndex, NgramIndex};
-use crate::ngram::path::{FilePath, NgramPath};
-use anyhow::{Result, anyhow};
+use crate::ngram::index::{FilesLinesIndex, LineIndex, NgramIndex};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
-#[derive(Serialize, Deserialize, Clone) ]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GlobalData {
     ngram_len: u8,
     indexs: HashSet<NgramIndex>,

@@ -3,7 +3,7 @@ use log::{info, warn};
 use rayon::iter::*;
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::{Path},
 };
 
 use crate::lsp::{
@@ -99,12 +99,6 @@ impl From<(PathIndex, TreeData)> for TreeBuilder {
             tree_data: value.1,
         }
     }
-}
-
-enum PathTree {
-    Root,
-    Dir(Vec<PathTree>),
-    File(String),
 }
 
 impl TryFrom<FileIndexBuilder> for Builder {

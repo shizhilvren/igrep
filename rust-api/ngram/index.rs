@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::File,
-    ops::Deref,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 use wasm_bindgen::prelude::*;
 
@@ -46,11 +43,11 @@ pub struct FilesLinesIndex {
     files_lines_id: Vec<FileLinesIndex>,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct FileLineIndex {
-    file_id: FileIndex,
-    line_id: LineIndex,
-}
+// #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+// pub struct FileLineIndex {
+//     file_id: FileIndex,
+//     line_id: LineIndex,
+// }
 
 impl NgramIndex {
     pub fn ngrams(&self) -> &[u8] {
@@ -273,7 +270,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn FilesLinesIndex_union() {
+    fn files_lines_index_union() {
         let a = FilesLinesIndex::from(vec![
             FileLinesIndex::from((
                 FileIndex::from(1),
@@ -319,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn FilesLinesIndex_from() {
+    fn files_ines_index_from() {
         let a = FilesLinesIndex::from(vec![
             FileLinesIndex::from((
                 FileIndex::from(1),

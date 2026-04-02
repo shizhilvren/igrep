@@ -5,19 +5,10 @@ use regex_syntax::{
     hir::{Hir, HirKind},
     parse,
 };
-use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{
-    data,
-    ngram::{
-        builder::AbsPath,
-        data::{FileData, FromToData, GlobalData, NgramData},
-        index::{
-            FileIndex, FileLinesIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec,
-            SetCalculate,
-        },
-        path::NgramPath,
-    },
+use crate::ngram::{
+    data::{FileData, FromToData, GlobalData, NgramData},
+    index::{FileIndex, FilesLinesIndex, LinesIndex, NgramIndex, NgramIndexVec, SetCalculate},
 };
 
 pub struct SearchEngine {

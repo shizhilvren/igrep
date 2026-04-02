@@ -1,8 +1,6 @@
-use crate::index;
 use crate::ngram::data::{GlobalData, NgramData};
-use crate::ngram::path::{FilePath, GetPath, GlobalDataPath};
+use crate::ngram::path::{FilePath, GlobalDataPath};
 use crate::ngram::{
-    self,
     index::{
         FileIndex, FileLinesIndex, FilesLinesIndex, LineIndex, LinesIndex, NgramIndex,
         NgramIndexVec,
@@ -10,12 +8,11 @@ use crate::ngram::{
     path::NgramPath,
 };
 use anyhow::{Error, Result, anyhow};
-use bincode::de;
-use log::{error, info, warn};
+use log::{info, warn};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
-use std::{collections::HashMap, default};
 
 pub struct Builder {
     ngram_len: u8,
