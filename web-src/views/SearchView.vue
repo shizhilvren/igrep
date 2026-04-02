@@ -16,6 +16,9 @@
                     )
                 })
         }" />
+        <div v-if="searching" class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
     </main>
 </template>
 
