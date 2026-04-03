@@ -18,6 +18,8 @@ use std::{
 
 use log::{debug, error, info, warn};
 
+use crate::lsp::data::{FileContentData, FileData};
+
 /// A simple LSP client for interacting with clangd
 pub struct ClangdClient {
     server_process: Child,
@@ -238,6 +240,22 @@ impl ClangdClient {
             e
         })?;
 
+        let params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "cpp".to_string(), // or "c" depending on file type
+                version: 1,
+                text: content,
+            },
+        };
+
+        self.send_notification("textDocument/didOpen", params)
+    }
+
+    /// Open a file in the LSP server
+    pub fn open_file_with_data(&mut self, file_path: &str, file_data: &FileContentData) -> Result<()> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let content = file_data.lines().join("\n");
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
                 uri: uri.clone(),

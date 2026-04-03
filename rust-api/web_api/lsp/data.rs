@@ -58,7 +58,7 @@ impl TreeData {
 #[wasm_bindgen]
 impl FileData {
     pub fn lines(&self) -> Vec<String> {
-        self.data.lines().iter().cloned().collect()
+        self.data.file_content().lines().iter().cloned().collect()
     }
 }
 

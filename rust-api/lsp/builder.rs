@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::lsp::{
-    data::{DirName, FileData, FileName, TreeData},
+    data::{DirName, FileContentData, FileData, FileName, FileSemanticTokensData, TreeData},
     index::{FileIndex, PathIndex},
     path::TreeDataPath,
 };
@@ -21,14 +21,33 @@ pub struct FileIndexBuilder {
     path_set: HashSet<FileIndex>,
 }
 
-pub struct FileBuilder {
+pub struct FileIndexDataBuilder {
+    file_builder: Vec<FileDataBuilder>,
+}
+
+pub struct FileDataBuilder {
     file_index: FileIndex,
-    file_data: FileData,
+    file_data: FileContentData,
 }
 
 pub struct TreeBuilder {
     path_index: PathIndex,
     tree_data: TreeData,
+}
+
+impl FileDataBuilder {
+    pub fn file_index(&self) -> &FileIndex {
+        &self.file_index
+    }
+    pub fn file_data(&self) -> &FileContentData {
+        &self.file_data
+    }
+}
+
+impl FileIndexDataBuilder {
+    pub fn file_builders(&self) -> &[FileDataBuilder] {
+        &self.file_builder
+    }
 }
 
 impl FileIndexBuilder {
@@ -80,11 +99,11 @@ impl From<()> for FileIndexBuilder {
     }
 }
 
-impl TryFrom<FileIndex> for FileBuilder {
+impl TryFrom<FileIndex> for FileDataBuilder {
     type Error = anyhow::Error;
 
     fn try_from(value: FileIndex) -> Result<Self> {
-        let data = FileData::try_from(&value)?;
+        let data = FileContentData::try_from(&value)?;
         Ok(Self {
             file_data: data,
             file_index: value,
@@ -101,10 +120,21 @@ impl From<(PathIndex, TreeData)> for TreeBuilder {
     }
 }
 
-impl TryFrom<Vec<FileBuilder>> for Builder {
+impl
+    TryFrom<(
+        FileIndexDataBuilder,
+        Vec<(FileIndex, FileSemanticTokensData)>,
+    )> for Builder
+{
     type Error = anyhow::Error;
 
-    fn try_from(file_builders: Vec<FileBuilder>) -> Result<Self> {
+    fn try_from(
+        (file_index_data_builder, semantic_tokens): (
+            FileIndexDataBuilder,
+            Vec<(FileIndex, FileSemanticTokensData)>,
+        ),
+    ) -> Result<Self> {
+        let file_builders = file_index_data_builder.file_builder;
         let mut path_dir_set: HashMap<PathIndex, (HashSet<FileName>, HashSet<DirName>)> =
             HashMap::new();
         file_builders.iter().try_for_each(|a| {
@@ -163,10 +193,14 @@ impl TryFrom<Vec<FileBuilder>> for Builder {
             ret
         })?;
 
+        let mut semantic_tokens_map: HashMap<FileIndex, FileSemanticTokensData> =
+            semantic_tokens.into_iter().collect();
         let mut path_file_set: HashMap<PathIndex, FileData> = HashMap::new();
-        file_builders.into_iter().try_for_each(|a| {
-            let file_index = a.file_index;
-            let file_data = a.file_data;
+        file_builders.into_iter().try_for_each(|file_builder| {
+            let file_index = file_builder.file_index;
+            let file_data = file_builder.file_data;
+            let file_data =
+                FileData::try_from((file_data, semantic_tokens_map.remove(&file_index)))?;
             let path = file_index.path();
             let path_index = PathIndex::from(path.clone());
             path_file_set
@@ -196,7 +230,7 @@ impl TryFrom<Vec<FileBuilder>> for Builder {
     }
 }
 
-impl TryFrom<FileIndexBuilder> for Builder {
+impl TryFrom<FileIndexBuilder> for FileIndexDataBuilder {
     type Error = anyhow::Error;
 
     fn try_from(value: FileIndexBuilder) -> Result<Self> {
@@ -204,10 +238,10 @@ impl TryFrom<FileIndexBuilder> for Builder {
             .path_set
             .into_par_iter()
             .filter_map(|index| {
-                FileBuilder::try_from(index.clone()).map_or_else(
+                FileDataBuilder::try_from(index.clone()).map_or_else(
                     |e| {
                         warn!(
-                            "Failed to create FileBuilder for index {:?}, error: {:?}",
+                            "Failed to create FileDataBuilder for index {:?}, error: {:?}",
                             index, e
                         );
                         None
@@ -215,7 +249,15 @@ impl TryFrom<FileIndexBuilder> for Builder {
                     |d| Some(d),
                 )
             })
-            .collect::<Vec<FileBuilder>>();
-        Self::try_from(datas)
+            .collect::<Vec<FileDataBuilder>>();
+        Ok(Self::from(datas))
+    }
+}
+
+impl From<Vec<FileDataBuilder>> for FileIndexDataBuilder {
+    fn from(value: Vec<FileDataBuilder>) -> Self {
+        Self {
+            file_builder: value,
+        }
     }
 }

@@ -56,16 +56,13 @@ async function refreshDirData(basePath: string[]) {
         const files = dirData.files().map((f) => f.name())
         const dirs = dirData.dirs().map((d) => d.name())
         dir_data.value = new DirData(dirs, files)
-    }
-    if (tree_data.is_file()) {
+    } else if (tree_data.is_file()) {
         is_dir.value = false
         is_file.value = true
         const fileData = tree_data.file_data()!
         code.value = fileData.lines()
         console.log(code.value)
     }
-
-
 }
 
 

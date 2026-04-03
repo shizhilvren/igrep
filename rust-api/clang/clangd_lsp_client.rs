@@ -1,6 +1,7 @@
 use crate::lsp;
 use crate::lsp::builder::Builder;
 use crate::lsp::clangd_client::ClangdClient;
+use crate::lsp::data::FileSemanticTokensData;
 use crate::lsp::index::FileIndex;
 use anyhow::{Result, anyhow};
 use log::{error, info};
@@ -31,15 +32,15 @@ pub fn main(
 
     let first_file = files_list.first().ok_or_else(|| anyhow!("文件列表为空"))?;
 
-    // // 在 LSP 服务器中打开文件
-    // client.open_file(first_file)?;
-    // info!("已打开文件: {}", first_file);
+    // 在 LSP 服务器中打开文件
+    client.open_file(first_file)?;
+    info!("已打开文件: {}", first_file);
 
-    // client.did_close(first_file)?;
-    // info!("已关闭文件: {}", first_file);
+    client.did_close(first_file)?;
+    info!("已关闭文件: {}", first_file);
 
-    // let _: Value = client.reader(-1)?;
-    // info!("LSP index finish");
+    let _: Value = client.reader(-1)?;
+    info!("LSP index finish");
 
     let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
     files_list.into_iter().try_for_each(|file_name| {
@@ -47,7 +48,39 @@ pub fn main(
         file_index_builder.insert(file_index)?;
         Ok::<(), anyhow::Error>(())
     })?;
-    let builder = Builder::try_from(file_index_builder)?;
+    let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
+
+    let semantic_token = file_index_data_builder
+        .file_builders()
+        .iter()
+        .map(|file_builder| {
+            let file_path = file_builder
+                .file_index()
+                .path()
+                .to_string_lossy()
+                .to_string();
+            let file_data = file_builder.file_data();
+            client.open_file_with_data(&file_path, file_data)?;
+            let tokens = client.get_semantic_tokens_full(file_path.as_str())?;
+            client.did_close(&file_path)?;
+            info!("获取语义标记成功: {}", file_path);
+            let semantic_tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
+            let semantic_toklens_data = FileSemanticTokensData::from(semantic_tokens);
+            Ok((file_builder.file_index().clone(), semantic_toklens_data))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    // semantic_token
+    //     .into_iter()
+    //     .try_for_each(|(file_index, semantic_tokens)| {
+    //         info!(
+    //             "文件: {:?}, 语义标记数量: {}",
+    //             file_index.path(),
+    //             semantic_tokens.tokens().len()
+    //         );
+    //         Ok::<(), anyhow::Error>(())
+    //     })?;
+
+    let builder = Builder::try_from((file_index_data_builder, semantic_token))?;
     builder.dump(PathBuf::from(config).as_path())?;
 
     // files_list.into_iter().try_for_each(|file| {
