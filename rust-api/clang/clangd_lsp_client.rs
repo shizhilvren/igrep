@@ -14,74 +14,100 @@ pub fn main(
     file_list: &str,
     debug: bool,
     log_file: String,
-    compile_commands_dir: &str,
+    compile_commands_dir: String,
     config: &str,
 ) -> Result<()> {
-    // 初始化客户端，连接到本地运行的 clangd 服务器
-    println!("正在连接到 clangd 服务器...");
-    let mut client = ClangdClient::new(&log_file, compile_commands_dir, debug)?;
-    println!("已连接到 clangd 服务器");
+    let (lsp_request_tx, lsp_request_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    let (lsp_response_tx, lsp_response_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2) // 设置工作线程数为 4
+        .thread_name("lsp-server-wrapper") // 设置线程名称
+        .enable_all() // 启用 IO 和 Time 驱动
+        .build()
+        .unwrap();
+    rt.spawn(async move {
+        let client_wrapper = crate::clang::lsp_server_wraper::ClangdClient::new(
+            &log_file,
+            compile_commands_dir.to_string(),
+            debug,
+        )
+        .unwrap();
+        client_wrapper
+            .warpper_loop(lsp_request_rx, lsp_response_tx)
+            .await
+            .unwrap();
+    });
 
-    let file_content = fs::read(file_list)?;
-    let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
-        .lines()
-        .filter_map(Result::ok)
-        .filter(|file| !file.is_empty())
-        .map(|line| line.trim().to_string())
-        .collect();
+    println!("Wait for it...");
+    std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
+    println!("Done!");
 
-    let first_file = files_list.first().ok_or_else(|| anyhow!("文件列表为空"))?;
+    // // 初始化客户端，连接到本地运行的 clangd 服务器
+    // println!("正在连接到 clangd 服务器...");
+    // let mut client = ClangdClient::new(&log_file, compile_commands_dir, debug)?;
+    // println!("已连接到 clangd 服务器");
 
-    // 在 LSP 服务器中打开文件
-    client.open_file(first_file)?;
-    info!("已打开文件: {}", first_file);
+    // let file_content = fs::read(file_list)?;
+    // let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
+    //     .lines()
+    //     .filter_map(Result::ok)
+    //     .filter(|file| !file.is_empty())
+    //     .map(|line| line.trim().to_string())
+    //     .collect();
 
-    client.did_close(first_file)?;
-    info!("已关闭文件: {}", first_file);
+    // let first_file = files_list.first().ok_or_else(|| anyhow!("文件列表为空"))?;
 
-    let _: Value = client.reader(-1)?;
-    info!("LSP index finish");
+    // // 在 LSP 服务器中打开文件
+    // client.open_file(first_file)?;
+    // info!("已打开文件: {}", first_file);
 
-    let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
-    files_list.into_iter().try_for_each(|file_name| {
-        let file_index = FileIndex::from(file_name);
-        file_index_builder.insert(file_index)?;
-        Ok::<(), anyhow::Error>(())
-    })?;
-    let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
+    // client.did_close(first_file)?;
+    // info!("已关闭文件: {}", first_file);
 
-    let semantic_token = file_index_data_builder
-        .file_builders()
-        .iter()
-        .map(|file_builder| {
-            let file_path = file_builder
-                .file_index()
-                .path()
-                .to_string_lossy()
-                .to_string();
-            let file_data = file_builder.file_data();
-            client.open_file_with_data(&file_path, file_data)?;
-            let tokens = client.get_semantic_tokens_full(file_path.as_str())?;
-            client.did_close(&file_path)?;
-            info!("获取语义标记成功: {}", file_path);
-            let semantic_tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
-            let semantic_toklens_data = FileSemanticTokensData::from(semantic_tokens);
-            Ok((file_builder.file_index().clone(), semantic_toklens_data))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    // semantic_token
-    //     .into_iter()
-    //     .try_for_each(|(file_index, semantic_tokens)| {
-    //         info!(
-    //             "文件: {:?}, 语义标记数量: {}",
-    //             file_index.path(),
-    //             semantic_tokens.tokens().len()
-    //         );
-    //         Ok::<(), anyhow::Error>(())
-    //     })?;
+    // let _: Value = client.reader(-1)?;
+    // info!("LSP index finish");
 
-    let builder = Builder::try_from((file_index_data_builder, semantic_token))?;
-    builder.dump(PathBuf::from(config).as_path())?;
+    // let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
+    // files_list.into_iter().try_for_each(|file_name| {
+    //     let file_index = FileIndex::from(file_name);
+    //     file_index_builder.insert(file_index)?;
+    //     Ok::<(), anyhow::Error>(())
+    // })?;
+    // let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
+
+    // let semantic_token = file_index_data_builder
+    //     .file_builders()
+    //     .iter()
+    //     .map(|file_builder| {
+    //         let file_path = file_builder
+    //             .file_index()
+    //             .path()
+    //             .to_string_lossy()
+    //             .to_string();
+    //         let file_data = file_builder.file_data();
+    //         client.open_file_with_data(&file_path, file_data)?;
+    //         let tokens = client.get_semantic_tokens_full(file_path.as_str())?;
+    //         client.did_close(&file_path)?;
+    //         info!("获取语义标记成功: {}", file_path);
+    //         let semantic_tokens: lsp_types::SemanticTokens = serde_json::from_value(tokens)?;
+    //         let semantic_toklens_data = FileSemanticTokensData::from(semantic_tokens);
+    //         Ok((file_builder.file_index().clone(), semantic_toklens_data))
+    //     })
+    //     .collect::<Result<Vec<_>>>()?;
+    // info!("all semantic tokens get finish.");
+    // // semantic_token
+    // //     .into_iter()
+    // //     .try_for_each(|(file_index, semantic_tokens)| {
+    // //         info!(
+    // //             "文件: {:?}, 语义标记数量: {}",
+    // //             file_index.path(),
+    // //             semantic_tokens.tokens().len()
+    // //         );
+    // //         Ok::<(), anyhow::Error>(())
+    // //     })?;
+
+    // let builder = Builder::try_from((file_index_data_builder, semantic_token))?;
+    // builder.dump(PathBuf::from(config).as_path())?;
 
     // files_list.into_iter().try_for_each(|file| {
     //     client.open_file(&file)?;

@@ -127,7 +127,7 @@ fn main() -> Result<()> {
                 &args.file_list,
                 args.debug,
                 args.log.clone(),
-                &args.compile_commands_dir,
+                args.compile_commands_dir.to_string(),
                 &args.config,
             )
             .map_err(|e| anyhow!("Failed to run Clang index: {}", e))

@@ -5,7 +5,6 @@ pub mod encode;
 pub mod index;
 pub mod range;
 pub mod search;
-pub mod clang;
 pub mod lsp;
 pub mod ngram;
 pub mod web_api;

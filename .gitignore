@@ -17,7 +17,8 @@ igrep_web/.vscode
 node_modules/*
 package-lock.json
 Cargo.lock
-
+rust-api/web_api/target
+rust-api/web_api/target/*
 
 # Logs
 logs
