@@ -9,7 +9,7 @@
             base_path: normalizedPath
         }" />
         <div v-if="is_file" class="file-editor">
-            <OneFile v-bind="{ language: 'rust', code: code }" />
+            <OneFile v-bind="{ language: 'cpp', code: code }" />
         </div>
     </main>
 </template>
