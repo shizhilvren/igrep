@@ -28,6 +28,36 @@ pub struct DirName {
 }
 
 #[wasm_bindgen]
+pub struct SemanticTokens {
+    tokens: Vec<SemanticToken>,
+}
+
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct SemanticToken {
+    data: crate::lsp::data::SemanticToken,
+}
+
+#[wasm_bindgen]
+impl SemanticToken {
+    pub fn delta_line(&self) -> u32 {
+        self.data.delta_line
+    }
+    pub fn delta_start(&self) -> u32 {
+        self.data.delta_start
+    }
+    pub fn length(&self) -> u32 {
+        self.data.length
+    }
+    pub fn token_type(&self) -> u32 {
+        self.data.token_type
+    }
+    pub fn token_modifiers_bitset(&self) -> u32 {
+        self.data.token_modifiers_bitset
+    }
+}
+
+#[wasm_bindgen]
 impl TreeData {
     pub fn is_file(&self) -> bool {
         matches!(self.data, crate::lsp::data::TreeData::File(_))
@@ -59,6 +89,14 @@ impl TreeData {
 impl FileData {
     pub fn lines(&self) -> Vec<String> {
         self.data.file_content().lines().iter().cloned().collect()
+    }
+    pub fn semantic_tokens(&self) -> Option<Vec<SemanticToken>> {
+        self.data.semantic_tokens().map(|t| {
+            t.tokens()
+                .iter()
+                .map(|t| SemanticToken::from(t.clone()))
+                .collect()
+        })
     }
 }
 
@@ -119,6 +157,11 @@ impl From<crate::lsp::data::FileName> for FileName {
 
 impl From<crate::lsp::data::DirName> for DirName {
     fn from(data: crate::lsp::data::DirName) -> Self {
+        Self { data }
+    }
+}
+impl From<crate::lsp::data::SemanticToken> for SemanticToken {
+    fn from(data: crate::lsp::data::SemanticToken) -> Self {
         Self { data }
     }
 }

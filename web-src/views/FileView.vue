@@ -9,12 +9,13 @@
             base_path: normalizedPath
         }" />
         <div v-if="is_file" class="file-editor">
-            <OneFile v-bind="{ language: 'cpp', code: code }" />
+            <OneFile v-bind="{ language: 'cpp', code: code, semanticTokens: semanticTokens }" />
         </div>
     </main>
 </template>
 
 <script setup lang="ts">
+import { SemanticTokens, SemanticToken } from "@/components/lsp/OneFile.vue";
 import FilePathBar from '@/components/lsp/FilePathBar.vue';
 import OneFile from '@/components/lsp/OneFile.vue';
 import { computed, ref, watch } from 'vue';
@@ -28,8 +29,11 @@ const props = defineProps<{
 
 const dir_data = ref<DirData>(new DirData([], []))
 const code = ref<string[]>([])
+const semanticTokens = ref<SemanticTokens | undefined>(undefined)
 const is_dir = ref(false)
 const is_file = ref(false)
+
+
 
 function normalizeFilePath(filePath: string | string[]): string[] {
     const segments = Array.isArray(filePath) ? filePath : [filePath]
@@ -49,6 +53,7 @@ async function refreshDirData(basePath: string[]) {
     const data = await get_tree_data(basePath)
     const tree_data = new TreeData(data!)
 
+
     if (tree_data.is_dir()) {
         is_dir.value = true
         is_file.value = false
@@ -61,6 +66,8 @@ async function refreshDirData(basePath: string[]) {
         is_file.value = true
         const fileData = tree_data.file_data()!
         code.value = fileData.lines()
+        semanticTokens.value = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
+            (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
         console.log(code.value)
     }
 }

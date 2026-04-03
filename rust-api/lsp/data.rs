@@ -45,7 +45,7 @@ pub struct FileSemanticTokensData {
     tokens: Vec<SemanticToken>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SemanticToken {
     pub delta_line: u32,
     pub delta_start: u32,
@@ -95,8 +95,6 @@ impl DirName {
         &self.name
     }
 }
-
-
 
 impl TryFrom<String> for FileName {
     type Error = anyhow::Error;
