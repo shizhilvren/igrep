@@ -32,10 +32,7 @@ pub fn main(
             debug,
         )
         .unwrap();
-        client_wrapper
-            .warpper_loop(lsp_request_rx, lsp_response_tx)
-            .await
-            .unwrap();
+        client_wrapper.warpper_loop(lsp_request_rx).await.unwrap();
     });
 
     println!("Wait for it...");

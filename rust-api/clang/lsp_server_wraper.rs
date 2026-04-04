@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
-use log::{debug, info};
+use log::{debug, error, info};
+use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use lsp_types::{
@@ -12,21 +13,59 @@ use lsp_types::{
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
+    sync::{mpsc, oneshot},
 };
 
 use crate::clang::lsp_server_wraper;
 
+struct ResponseToClientData {
+    pub val: Value,
+}
+struct ClientToRequestData {
+    sender: tokio::sync::oneshot::Sender<ResponseToClientData>,
+    method: String,
+    params: Value,
+}
+struct RequestToResponseData {
+    id: RequestID,
+    response_tx: tokio::sync::oneshot::Sender<ResponseToClientData>,
+}
+
+#[derive(Clone, Serialize, PartialEq, Eq)]
+struct RequestID {
+    id: u64,
+}
+#[derive(Clone)]
+pub struct RequestClient {
+    request_tx: mpsc::Sender<ClientToRequestData>,
+}
+
+impl RequestClient {
+    pub fn rqueset<P: serde::Serialize>(
+        &self,
+        method: &str,
+        params: P,
+    ) -> Result<tokio::sync::oneshot::Receiver<ResponseToClientData>> {
+        let (response_to_client_tx, response_to_client_rx) =
+            oneshot::channel::<ResponseToClientData>();
+        let valus = serde_json::json!(params);
+        let data = ClientToRequestData::from((method, valus, response_to_client_tx));
+        self.request_tx.send(data);
+        Ok(response_to_client_rx)
+    }
+}
+
 pub struct ClangdClient {
     server_process: tokio::process::Child,
-    request_id: i64,
+    request_id: RequestID,
 }
 
 impl ClangdClient {
     pub async fn warpper_loop(
         mut self,
-        request_rx: tokio::sync::mpsc::UnboundedReceiver<u32>,
-        response_tx: tokio::sync::mpsc::UnboundedSender<u32>,
-    ) -> Result<()> {
+        request_rx: tokio::sync::mpsc::UnboundedReceiver<ClientToRequestData>,
+        // response_tx: tokio::sync::mpsc::UnboundedSender<u32>,
+    ) -> Result<RequestClient> {
         let mut stdin = self
             .server_process
             .stdin
@@ -40,9 +79,12 @@ impl ClangdClient {
 
         stdin = self.initialize(stdin).await?;
 
-        tokio::spawn(Self::loop_response(stdout, response_tx));
-        tokio::spawn(self.loop_request(stdin, request_rx));
-        Ok(())
+        let (req_to_res_tx, req_to_res_rx) =
+            tokio::sync::mpsc::unbounded_channel::<RequestToResponseData>();
+
+        tokio::spawn(Self::loop_response(stdout, req_to_res_rx));
+        tokio::spawn(self.loop_request(stdin, request_rx, req_to_res_tx));
+        Err(anyhow!("error"))
     }
 
     /// Start a new clangd server process and initialize the LSP connection
@@ -85,22 +127,37 @@ impl ClangdClient {
 }
 
 impl ClangdClient {
-    async fn request<P: serde::Serialize>(
+    async fn request_base<P: serde::Serialize>(
         &mut self,
         mut stdin: ChildStdin,
+        use_id: bool,
         method: &str,
         params: P,
-    ) -> Result<ChildStdin> {
-        self.request_id += 1;
-        let id = self.request_id;
-
-        // Create request JSON
-        let request = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params
-        });
+    ) -> Result<(ChildStdin, Option<RequestID>)> {
+        let (request, id) = match use_id {
+            true => {
+                self.request_id.next();
+                let id = self.request_id.clone();
+                // Create request JSON
+                (
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id.clone(),
+                        "method": method,
+                        "params": params
+                    }),
+                    Some(id),
+                )
+            }
+            false => (
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    "params": params
+                }),
+                None,
+            ),
+        };
 
         // Serialize and send the request
         let request_str = serde_json::to_string(&request)?;
@@ -109,7 +166,17 @@ impl ClangdClient {
 
         stdin.write_all(str.as_bytes()).await?;
         stdin.flush().await?;
-        Ok(stdin)
+        Ok((stdin, id))
+    }
+
+    async fn request<P: serde::Serialize>(
+        &mut self,
+        stdin: ChildStdin,
+        method: &str,
+        params: P,
+    ) -> Result<(ChildStdin, RequestID)> {
+        let (stdin, id) = self.request_base(stdin, true, method, params).await?;
+        id.map_or(Err(anyhow!("request must have id")), |id| Ok((stdin, id)))
     }
 
     async fn notification<P: serde::Serialize>(
@@ -118,22 +185,7 @@ impl ClangdClient {
         method: &str,
         params: P,
     ) -> Result<ChildStdin> {
-        // Create notification JSON
-        let notification = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params
-        });
-
-        // Serialize and send the notification
-        let notification_str = serde_json::to_string(&notification)?;
-        let content_length = notification_str.len();
-        let header = format!("Content-Length: {}\r\n\r\n", content_length);
-
-        stdin.write_all(header.as_bytes()).await?;
-        stdin.write_all(notification_str.as_bytes()).await?;
-        stdin.flush().await?;
-
+        let (stdin, _) = self.request_base(stdin, false, method, params).await?;
         Ok(stdin)
     }
 
@@ -171,14 +223,42 @@ impl ClangdClient {
     async fn loop_request(
         mut self,
         stdin: ChildStdin,
-        request_rx: tokio::sync::mpsc::UnboundedReceiver<u32>,
+        client_to_request_rx: tokio::sync::mpsc::UnboundedReceiver<ClientToRequestData>,
+        request_to_response_tx: tokio::sync::mpsc::UnboundedSender<RequestToResponseData>,
     ) -> () {
-        loop {}
+        let mut stdin = stdin;
+        let mut client_to_request_rx = client_to_request_rx;
+        loop {
+            match client_to_request_rx.recv().await {
+                Some(data) => match self.request(stdin, &data.method, data.params).await {
+                    Ok((stdin_new, id)) => {
+                        stdin = stdin_new;
+                        match request_to_response_tx
+                            .send(RequestToResponseData::from((id, data.sender)))
+                        {
+                            Err(e) => {
+                                error!("request fail {}", e);
+                                break;
+                            }
+                            Ok(_) => {}
+                        }
+                    }
+                    Err(e) => {
+                        error!("request fail {} for {}", e, &data.method);
+                        break;
+                    }
+                },
+                None => {
+                    error!("loop request finish because client_to_request close");
+                    break;
+                }
+            }
+        }
     }
 
     async fn loop_response(
         stdout: ChildStdout,
-        response_tx: tokio::sync::mpsc::UnboundedSender<u32>,
+        req_to_res_rx: tokio::sync::mpsc::UnboundedReceiver<RequestToResponseData>,
     ) -> () {
         let mut reader = BufReader::new(stdout);
         loop {
@@ -348,5 +428,37 @@ impl ClangdClient {
             .await?;
 
         Ok(stdin)
+    }
+}
+
+impl RequestID {
+    pub fn next(&mut self) {
+        self.id += 1
+    }
+}
+
+impl From<()> for RequestID {
+    fn from(value: ()) -> Self {
+        RequestID { id: 0 }
+    }
+}
+impl From<(&str, Value, oneshot::Sender<ResponseToClientData>)> for ClientToRequestData {
+    fn from(
+        (method, params, sender): (&str, Value, oneshot::Sender<ResponseToClientData>),
+    ) -> Self {
+        ClientToRequestData {
+            sender,
+            method: method.to_string(),
+            params,
+        }
+    }
+}
+
+impl From<(RequestID, oneshot::Sender<ResponseToClientData>)> for RequestToResponseData {
+    fn from((id, sender): (RequestID, oneshot::Sender<ResponseToClientData>)) -> Self {
+        RequestToResponseData {
+            id,
+            response_tx: sender,
+        }
     }
 }
