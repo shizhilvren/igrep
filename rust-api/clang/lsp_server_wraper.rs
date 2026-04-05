@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use anyhow::{Result, anyhow};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde_json::Value;
 
 use lsp_types::{
@@ -20,13 +20,14 @@ pub struct ResponseToClientData {
 }
 
 struct ClientToRequestData {
-    sender: ClientToRequestDataNeedResponse,
+    sender: ClientToRequestDataType,
     method: String,
     params: Value,
 }
-enum ClientToRequestDataNeedResponse {
-    Need(tokio::sync::oneshot::Sender<ResponseToClientData>),
-    NotNeed,
+enum ClientToRequestDataType {
+    Request(tokio::sync::oneshot::Sender<ResponseToClientData>),
+    Notification,
+    Response(RequestID),
 }
 
 #[derive(Debug)]
@@ -41,7 +42,7 @@ struct RequestID {
 }
 
 #[derive(Clone)]
-pub struct RequestClient {
+pub struct Client {
     request_tx: mpsc::UnboundedSender<ClientToRequestData>,
 }
 
@@ -125,7 +126,7 @@ impl ResponseRegister {
     }
 }
 
-impl RequestClient {
+impl Client {
     pub async fn initialize(&self) -> Result<tokio::sync::oneshot::Receiver<ResponseToClientData>> {
         // 创建详细的客户端能力
         let client_capabilities = ClientCapabilities {
@@ -331,10 +332,61 @@ impl RequestClient {
         self.request_tx.send(data)?;
         Ok(())
     }
+
+    fn response(&self, id: RequestID, method: &str, params: Value) -> Result<bool> {
+        debug!(
+            "client response method: {method} params :{:?}",
+            params.clone()
+        );
+        assert_eq!(method, "window/workDoneProgress/create");
+        match method {
+            "window/workDoneProgress/create" => {
+                debug!("in window/workDoneProgress/create");
+                let params: lsp_types::WorkDoneProgressCreateParams =
+                    serde_json::from_value(params)?;
+                match params.token {
+                    lsp_types::ProgressToken::String(token) => {
+                        debug!("Progress created with token: {}", token);
+                        let data = ClientToRequestData::from((method, Value::Null, id));
+                        self.request_tx.send(data)?;
+                    }
+                    lsp_types::ProgressToken::Number(token) => {
+                        debug!("Progress created with token: {}", token);
+                    }
+                }
+            }
+            "$/progress" => {
+                let params: lsp_types::ProgressParams = serde_json::from_value(params)?;
+                match params.value {
+                    lsp_types::ProgressParamsValue::WorkDone(work_done) => match work_done {
+                        lsp_types::WorkDoneProgress::Begin(begin) => {
+                            info!(
+                                "Progress begin: {} - {}",
+                                begin.title,
+                                begin.message.unwrap_or_default()
+                            );
+                        }
+                        lsp_types::WorkDoneProgress::Report(report) => {
+                            info!("Progress report: {}", report.message.unwrap_or_default());
+                        }
+                        lsp_types::WorkDoneProgress::End(end) => {
+                            info!("Progress end: {}", end.message.unwrap_or_default());
+                            return Ok(true);
+                        }
+                    },
+                }
+            }
+            _ => {
+                // Unknown notification
+                warn!("Unknown notification: {:?} {} {}", id, method, params);
+            }
+        }
+        Ok(false)
+    }
 }
 
 impl ClangdClient {
-    pub async fn warpper_loop(mut self) -> Result<RequestClient> {
+    pub async fn warpper_loop(mut self) -> Result<Client> {
         let stdin = self
             .server_process
             .stdin
@@ -352,10 +404,10 @@ impl ClangdClient {
 
         let (req_to_res_tx, req_to_res_rx) =
             tokio::sync::mpsc::unbounded_channel::<RequestToResponseData>();
-
-        tokio::spawn(Self::loop_response(stdout, req_to_res_rx));
+        let client = Client::from(client_to_request_tx);
+        tokio::spawn(Self::loop_response(stdout, client.clone(), req_to_res_rx));
         tokio::spawn(self.loop_request(stdin, client_to_request_rx, req_to_res_tx));
-        Ok(RequestClient::from(client_to_request_tx))
+        Ok(client)
     }
 
     /// Start a new clangd server process and initialize the LSP connection
@@ -410,10 +462,10 @@ impl Response {
                     assert_eq!(end, "\r\n".as_bytes());
                     assert!(len.is_ascii());
                     let len = str::from_utf8(len)?.parse::<usize>()?;
-                    debug!(
-                        "response header: {}",
-                        str::from_utf8(buf.as_slice()).unwrap()
-                    );
+                    // debug!(
+                    //     "response header: {}",
+                    //     str::from_utf8(buf.as_slice()).unwrap()
+                    // );
                     self.status = ResponseStatus::ContentLength(len);
                 }
                 ResponseStatus::ContentLength(len) => {
@@ -426,10 +478,10 @@ impl Response {
                     let mut buf = vec![0; len.clone()];
                     let read_len = self.reader.read_exact(&mut buf).await?;
                     assert_eq!(len.clone(), read_len);
-                    debug!(
-                        "response len: {len} body: {}",
-                        str::from_utf8(buf.as_slice()).unwrap()
-                    );
+                    // debug!(
+                    //     "response len: {len} body: {}",
+                    //     str::from_utf8(buf.as_slice()).unwrap()
+                    // );
                     let response: serde_json::Value = serde_json::from_slice(&buf)?;
                     if let Some(error) = response.get("error") {
                         return Err(anyhow!("LSP error: {}", error));
@@ -446,26 +498,36 @@ impl ClangdClient {
     async fn request_base<P: serde::Serialize>(
         &mut self,
         mut stdin: ChildStdin,
-        use_id: bool,
+        id: Option<RequestID>,
         method: &str,
         params: P,
     ) -> Result<(ChildStdin, Option<RequestID>)> {
-        let (request, id) = match use_id {
-            true => {
-                self.request_id.next();
-                let id = self.request_id.clone();
+        let (request, id) = match (id, method) {
+            (Some(id), "") => {
                 // Create request JSON
                 (
                     serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id.id(),
-                        "method": method,
                         "params": params
                     }),
                     Some(id),
                 )
             }
-            false => (
+            (Some(id), _) => {
+                // Create request JSON
+                (
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id.id(),
+                    "method": method,
+
+                        "params": params
+                    }),
+                    Some(id),
+                )
+            }
+            (None, _) => (
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "method": method,
@@ -491,7 +553,9 @@ impl ClangdClient {
         method: &str,
         params: P,
     ) -> Result<(ChildStdin, RequestID)> {
-        let (stdin, id) = self.request_base(stdin, true, method, params).await?;
+        let id = self.request_id.clone();
+        self.request_id.next();
+        let (stdin, id) = self.request_base(stdin, Some(id), method, params).await?;
         id.map_or(Err(anyhow!("request must have id")), |id| Ok((stdin, id)))
     }
 
@@ -501,7 +565,16 @@ impl ClangdClient {
         method: &str,
         params: P,
     ) -> Result<ChildStdin> {
-        let (stdin, _) = self.request_base(stdin, false, method, params).await?;
+        let (stdin, _) = self.request_base(stdin, None, method, params).await?;
+        Ok(stdin)
+    }
+    async fn resopnse<P: serde::Serialize>(
+        &mut self,
+        stdin: ChildStdin,
+        id: RequestID,
+        params: P,
+    ) -> Result<ChildStdin> {
+        let (stdin, _) = self.request_base(stdin, Some(id), "", params).await?;
         Ok(stdin)
     }
 
@@ -516,7 +589,7 @@ impl ClangdClient {
         loop {
             match client_to_request_rx.recv().await {
                 Some(ClientToRequestData {
-                    sender: ClientToRequestDataNeedResponse::Need(sender),
+                    sender: ClientToRequestDataType::Request(sender),
                     method,
                     params,
                 }) => match self.request(stdin, method.as_str(), params).await {
@@ -537,10 +610,23 @@ impl ClangdClient {
                     }
                 },
                 Some(ClientToRequestData {
-                    sender: ClientToRequestDataNeedResponse::NotNeed,
+                    sender: ClientToRequestDataType::Notification,
                     method,
                     params,
                 }) => match self.notification(stdin, method.as_str(), params).await {
+                    Ok(stdin_new) => {
+                        stdin = stdin_new;
+                    }
+                    Err(e) => {
+                        error!("request fail {} for {}", e, method);
+                        break;
+                    }
+                },
+                Some(ClientToRequestData {
+                    sender: ClientToRequestDataType::Response(id),
+                    method,
+                    params,
+                }) => match self.resopnse(stdin, id, params).await {
                     Ok(stdin_new) => {
                         stdin = stdin_new;
                     }
@@ -560,6 +646,7 @@ impl ClangdClient {
 
     async fn loop_response(
         stdout: ChildStdout,
+        client: Client,
         req_to_res_rx: tokio::sync::mpsc::UnboundedReceiver<RequestToResponseData>,
     ) -> () {
         let mut response = Response::from(BufReader::new(stdout));
@@ -570,12 +657,22 @@ impl ClangdClient {
                 value = response.response() => {
                     match value {
                         Ok(value)=>{
-                            let id_request = value["id"].clone().to_string();
-                            debug!("respose {:?}", value);
-                            let result = value["result"].clone();
-                            let id_request = id_request.parse::<u64>().expect("lsp server response not hav id");
-                            let id = RequestID::from(id_request);
-                            response_register.register_data(id, ResponseToClientData::from(result)).expect("register data fail")
+                            debug!("respose {:?}", &value);
+                            let id_request = value["id"].clone();
+                            let method = value["method"].clone();
+                            if(id_request != serde_json::json!(null) && method == serde_json::json!(null)){
+                                let result = value["result"].clone();
+                                let id_request = id_request.clone().to_string();
+                                let id_request = id_request.parse::<u64>().expect("lsp server response not hav id");
+                                let id = RequestID::from(id_request);
+                                response_register.register_data(id, ResponseToClientData::from(result)).expect("register data fail");
+                            }else if(id_request != serde_json::json!(null) && method != serde_json::json!(null)){
+                                let id_request = id_request.clone().to_string();
+                                let id_request = id_request.parse::<u64>().expect("lsp server response not hav id");
+                                let params = value.get("params").expect("get params fail");
+                                let method = value.get("method").and_then(|m| m.as_str()).expect("get method fail");
+                                client.response(RequestID::from(id_request), method, params.clone()).expect("handle server request fail");
+                            }
                         },
                         Err(e)=>{
                             error!("response error {e}");
@@ -600,6 +697,8 @@ impl ClangdClient {
             }
         }
     }
+
+    // fn handle_other_response()
 }
 
 impl RequestID {
@@ -625,7 +724,7 @@ impl From<(&str, Value, oneshot::Sender<ResponseToClientData>)> for ClientToRequ
         (method, params, sender): (&str, Value, oneshot::Sender<ResponseToClientData>),
     ) -> Self {
         ClientToRequestData {
-            sender: ClientToRequestDataNeedResponse::Need(sender),
+            sender: ClientToRequestDataType::Request(sender),
             method: method.to_string(),
             params,
         }
@@ -635,7 +734,17 @@ impl From<(&str, Value, oneshot::Sender<ResponseToClientData>)> for ClientToRequ
 impl From<(&str, Value)> for ClientToRequestData {
     fn from((method, params): (&str, Value)) -> Self {
         ClientToRequestData {
-            sender: ClientToRequestDataNeedResponse::NotNeed,
+            sender: ClientToRequestDataType::Notification,
+            method: method.to_string(),
+            params,
+        }
+    }
+}
+
+impl From<(&str, Value, RequestID)> for ClientToRequestData {
+    fn from((method, params, id): (&str, Value, RequestID)) -> Self {
+        ClientToRequestData {
+            sender: ClientToRequestDataType::Response(id),
             method: method.to_string(),
             params,
         }
@@ -674,7 +783,7 @@ impl From<Value> for ResponseToClientData {
     }
 }
 
-impl From<mpsc::UnboundedSender<ClientToRequestData>> for RequestClient {
+impl From<mpsc::UnboundedSender<ClientToRequestData>> for Client {
     fn from(value: mpsc::UnboundedSender<ClientToRequestData>) -> Self {
         Self { request_tx: value }
     }
