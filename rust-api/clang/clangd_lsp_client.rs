@@ -10,6 +10,12 @@ use std::fs;
 use std::io::BufRead;
 use std::path::PathBuf;
 
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    process::{ChildStdin, ChildStdout},
+    sync::{mpsc, oneshot},
+};
+
 pub fn main(
     file_list: &str,
     debug: bool,
@@ -32,9 +38,19 @@ pub fn main(
             debug,
         )
         .unwrap();
-        client_wrapper.warpper_loop(lsp_request_rx).await.unwrap();
+        let client_to_request_sender = client_wrapper.warpper_loop().await.unwrap();
+        let rec = client_to_request_sender
+            .initialize()
+            .await
+            .expect("init fail");
+        let _ = rec.await.expect("get init responce fail");
+        client_to_request_sender
+            .initialized()
+            .expect("initalized fail");
+        println!("Wait for it...");
+        std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
+        println!("Done!");
     });
-
     println!("Wait for it...");
     std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
     println!("Done!");
