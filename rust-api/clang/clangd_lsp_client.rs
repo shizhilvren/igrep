@@ -37,7 +37,7 @@ pub fn main(
             .initialized()
             .expect("initalized fail");
         info!("LSP initalized");
-        Ok(client_to_request_sender.clone())
+        Ok(client_to_request_sender)
     });
     let client_to_request_sender = rt.block_on(handle)??;
 
@@ -94,10 +94,14 @@ pub fn main(
         .collect::<Result<Vec<_>>>()?;
     info!("all semantic tokens get finish.");
 
+    let handle = rt.spawn(async move {
+        let mut client_to_request_sender = client_to_request_sender;
+        client_to_request_sender.index_done().await?;
+        Ok::<_, anyhow::Error>(client_to_request_sender)
+    });
+    let client_to_request_sender = rt.block_on(handle)??;
+    info!("index done");
     
-    println!("Wait for it...");
-    std::thread::sleep(std::time::Duration::from_secs(10)); // Sleep for 2 seconds
-    println!("Done!");
     // // semantic_token
     // //     .into_iter()
     // //     .try_for_each(|(file_index, semantic_tokens)| {

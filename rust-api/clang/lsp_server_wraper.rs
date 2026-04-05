@@ -41,9 +41,19 @@ struct RequestID {
     id: u64,
 }
 
-#[derive(Clone)]
 pub struct Client {
     request_tx: mpsc::UnboundedSender<ClientToRequestData>,
+    index_done_tx: mpsc::UnboundedSender<()>,
+    index_done_rx: Option<mpsc::UnboundedReceiver<()>>,
+}
+impl Clone for Client {
+    fn clone(&self) -> Self {
+        Client {
+            request_tx: self.request_tx.clone(),
+            index_done_tx: self.index_done_tx.clone(),
+            index_done_rx: None,
+        }
+    }
 }
 
 pub struct ClangdClient {
@@ -313,6 +323,16 @@ impl Client {
         self.notification(method, params)
     }
 
+    pub async fn index_done(&mut self) -> Result<()> {
+        match &mut self.index_done_rx {
+            Some(rx) => rx
+                .recv()
+                .await
+                .map_or(Err(anyhow!("not get index done")), |_| Ok(())),
+            None => Err(anyhow!("this is cloned , cannot wait")),
+        }
+    }
+
     fn request<P: serde::Serialize>(
         &self,
         method: &str,
@@ -338,7 +358,6 @@ impl Client {
             "client response method: {method} params :{:?}",
             params.clone()
         );
-        assert_eq!(method, "window/workDoneProgress/create");
         match method {
             "window/workDoneProgress/create" => {
                 debug!("in window/workDoneProgress/create");
@@ -371,6 +390,7 @@ impl Client {
                         }
                         lsp_types::WorkDoneProgress::End(end) => {
                             info!("Progress end: {}", end.message.unwrap_or_default());
+                            self.index_done_tx.send(())?;
                             return Ok(true);
                         }
                     },
@@ -404,7 +424,7 @@ impl ClangdClient {
 
         let (req_to_res_tx, req_to_res_rx) =
             tokio::sync::mpsc::unbounded_channel::<RequestToResponseData>();
-        let client = Client::from(client_to_request_tx);
+        let client = Client::from((client_to_request_tx));
         tokio::spawn(Self::loop_response(stdout, client.clone(), req_to_res_rx));
         tokio::spawn(self.loop_request(stdin, client_to_request_rx, req_to_res_tx));
         Ok(client)
@@ -568,6 +588,7 @@ impl ClangdClient {
         let (stdin, _) = self.request_base(stdin, None, method, params).await?;
         Ok(stdin)
     }
+
     async fn resopnse<P: serde::Serialize>(
         &mut self,
         stdin: ChildStdin,
@@ -658,20 +679,35 @@ impl ClangdClient {
                     match value {
                         Ok(value)=>{
                             debug!("respose {:?}", &value);
-                            let id_request = value["id"].clone();
-                            let method = value["method"].clone();
-                            if(id_request != serde_json::json!(null) && method == serde_json::json!(null)){
-                                let result = value["result"].clone();
-                                let id_request = id_request.clone().to_string();
-                                let id_request = id_request.parse::<u64>().expect("lsp server response not hav id");
+                            let id_request = &value["id"];
+                            let method = &value["method"];
+                            let result = &value["result"];
+                            if *id_request != serde_json::json!(null) && *result != serde_json::json!(null) {
+                                let id_request = id_request.to_string();
+                                let id_request = id_request
+                                    .parse::<u64>()
+                                    .expect("lsp server response not hav id");
                                 let id = RequestID::from(id_request);
-                                response_register.register_data(id, ResponseToClientData::from(result)).expect("register data fail");
-                            }else if(id_request != serde_json::json!(null) && method != serde_json::json!(null)){
-                                let id_request = id_request.clone().to_string();
-                                let id_request = id_request.parse::<u64>().expect("lsp server response not hav id");
+                                response_register
+                                    .register_data(id, ResponseToClientData::from(result.clone()))
+                                    .expect("register data fail");
+                            } else if *method != serde_json::json!(null) {
+                                let id_request = if *id_request != serde_json::json!(null) {
+                                    let id_request = id_request.clone().to_string();
+                                    id_request
+                                        .parse::<u64>()
+                                        .expect("lsp server response not hav id")
+                                } else {
+                                    0_u64
+                                };
                                 let params = value.get("params").expect("get params fail");
-                                let method = value.get("method").and_then(|m| m.as_str()).expect("get method fail");
-                                client.response(RequestID::from(id_request), method, params.clone()).expect("handle server request fail");
+                                let method = value
+                                    .get("method")
+                                    .and_then(|m| m.as_str())
+                                    .expect("get method fail");
+                                client
+                                    .response(RequestID::from(id_request), method, params.clone())
+                                    .expect("handle server request fail");
                             }
                         },
                         Err(e)=>{
@@ -784,7 +820,12 @@ impl From<Value> for ResponseToClientData {
 }
 
 impl From<mpsc::UnboundedSender<ClientToRequestData>> for Client {
-    fn from(value: mpsc::UnboundedSender<ClientToRequestData>) -> Self {
-        Self { request_tx: value }
+    fn from(sender: mpsc::UnboundedSender<ClientToRequestData>) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel::<()>();
+        Self {
+            request_tx: sender,
+            index_done_tx: tx,
+            index_done_rx: Some(rx),
+        }
     }
 }
