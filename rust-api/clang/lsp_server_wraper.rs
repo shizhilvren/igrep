@@ -1,16 +1,18 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use anyhow::{Result, anyhow};
 use log::{debug, error, info};
 use serde_json::Value;
 
-use lsp_types::{ClientCapabilities, InitializeParams, TextDocumentClientCapabilities};
+use lsp_types::{
+    ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
+    TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem, Uri,
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
     sync::{mpsc, oneshot},
 };
-
 
 #[derive(Debug)]
 pub struct ResponseToClientData {
@@ -283,6 +285,33 @@ impl RequestClient {
         self.notification(method, params)
     }
 
+    pub fn did_open(&self, file_path: &str, content: &[String]) -> Result<()> {
+        let method = "textDocument/didOpen";
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let content = content.iter().fold(String::new(), |mut s, x| {
+            s.push_str(x);
+            s
+        });
+        let params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri,
+                language_id: "cpp".to_string(), // or "c" depending on file type
+                version: 1,
+                text: content,
+            },
+        };
+        self.notification(method, params)
+    }
+
+    pub fn did_close(&self, file_path: &str) -> Result<()> {
+        let method = "textDocument/didClose";
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let params = DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri },
+        };
+        self.notification(method, params)
+    }
+
     fn request<P: serde::Serialize>(
         &self,
         method: &str,
@@ -381,6 +410,10 @@ impl Response {
                     assert_eq!(end, "\r\n".as_bytes());
                     assert!(len.is_ascii());
                     let len = str::from_utf8(len)?.parse::<usize>()?;
+                    debug!(
+                        "response header: {}",
+                        str::from_utf8(buf.as_slice()).unwrap()
+                    );
                     self.status = ResponseStatus::ContentLength(len);
                 }
                 ResponseStatus::ContentLength(len) => {
@@ -393,10 +426,15 @@ impl Response {
                     let mut buf = vec![0; len.clone()];
                     let read_len = self.reader.read_exact(&mut buf).await?;
                     assert_eq!(len.clone(), read_len);
+                    debug!(
+                        "response len: {len} body: {}",
+                        str::from_utf8(buf.as_slice()).unwrap()
+                    );
                     let response: serde_json::Value = serde_json::from_slice(&buf)?;
                     if let Some(error) = response.get("error") {
                         return Err(anyhow!("LSP error: {}", error));
                     }
+                    self.status = ResponseStatus::Init(vec![]);
                     return Ok(response);
                 }
             }
