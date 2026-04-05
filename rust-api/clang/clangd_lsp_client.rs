@@ -31,7 +31,7 @@ pub fn main(
         .enable_all() // 启用 IO 和 Time 驱动
         .build()
         .unwrap();
-    rt.spawn(async move {
+    let handle: tokio::task::JoinHandle<Result<_, anyhow::Error>> = rt.spawn(async move {
         let client_wrapper = crate::clang::lsp_server_wraper::ClangdClient::new(
             &log_file,
             compile_commands_dir.to_string(),
@@ -47,13 +47,14 @@ pub fn main(
         client_to_request_sender
             .initialized()
             .expect("initalized fail");
-        println!("Wait for it...");
-        std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
-        println!("Done!");
+        info!("LSP initalized");
+        Ok(client_to_request_sender.clone())
     });
-    println!("Wait for it...");
-    std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
-    println!("Done!");
+    let client_to_request_sender = rt.block_on(handle)??;
+
+    // println!("Wait for it...");
+    // std::thread::sleep(std::time::Duration::from_secs(2)); // Sleep for 2 seconds
+    // println!("Done!");
 
     // // 初始化客户端，连接到本地运行的 clangd 服务器
     // println!("正在连接到 clangd 服务器...");
