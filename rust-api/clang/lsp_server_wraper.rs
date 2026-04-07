@@ -137,7 +137,7 @@ impl ResponseRegister {
 }
 
 impl Client {
-    pub async fn initialize(&self) -> Result<tokio::sync::oneshot::Receiver<ResponseToClientData>> {
+    pub fn initialize(&self) -> Result<tokio::sync::oneshot::Receiver<ResponseToClientData>> {
         // 创建详细的客户端能力
         let client_capabilities = ClientCapabilities {
             text_document: Some(TextDocumentClientCapabilities {
@@ -290,6 +290,21 @@ impl Client {
         self.request("initialize", params)
     }
 
+    pub fn semantic_tokens_full(
+        &mut self,
+        file_path: &str,
+    ) -> Result<oneshot::Receiver<ResponseToClientData>> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = lsp_types::SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        self.request("textDocument/semanticTokens/full", params)
+    }
+
     pub fn initialized(&self) -> Result<()> {
         let method = "initialized";
         let params = lsp_types::InitializedParams {};
@@ -299,10 +314,7 @@ impl Client {
     pub fn did_open(&self, file_path: &str, content: &[String]) -> Result<()> {
         let method = "textDocument/didOpen";
         let uri = Uri::from_str(&format!("file://{}", file_path))?;
-        let content = content.iter().fold(String::new(), |mut s, x| {
-            s.push_str(x);
-            s
-        });
+        let content = content.join("\n");
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
                 uri,
