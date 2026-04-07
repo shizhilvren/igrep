@@ -170,7 +170,7 @@ pub fn main(
     let semantic_token = rt.block_on(async {
         let mut join_set = JoinSet::new();
         let total = file_index_data_builder.file_builders().len();
-        let semaphore = Arc::new(Semaphore::new(worker_threads.mul(2).max(1).min(9999)));
+        let semaphore = Arc::new(Semaphore::new(worker_threads.mul(1).max(1).min(9999)));
         let progress_bar = ProgressBar::new(total as u64);
         progress_bar.set_message("semantic tokens");
         if let Ok(style) = ProgressStyle::with_template(

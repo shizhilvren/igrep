@@ -78,8 +78,8 @@ enum ResponseRegisterData {
 
 enum ResponseStatus {
     Init(Vec<u8>),
-    ContentLength(usize),
-    ContentLengthNext(usize),
+    ContentLength(usize, Vec<u8>),
+    ContentLengthNext(Vec<u8>),
 }
 
 impl RequestID {
@@ -467,7 +467,7 @@ impl ClangdClient {
             false => "info",
         };
         let jobs = std::thread::available_parallelism()
-            .map(|n| n.get().saturating_mul(2))
+            .map(|n| n.get().saturating_mul(3))
             .unwrap_or(2)
             .to_string();
         // Start clangd process
@@ -511,26 +511,25 @@ impl Response {
                     assert_eq!(end, "\r\n".as_bytes());
                     assert!(len.is_ascii());
                     let len = str::from_utf8(len)?.parse::<usize>()?;
-                    // debug!(
-                    //     "response header: {}",
-                    //     str::from_utf8(buf.as_slice()).unwrap()
-                    // );
-                    self.status = ResponseStatus::ContentLength(len);
+                    debug!(
+                        "response header: {}",
+                        str::from_utf8(buf.as_slice()).unwrap()
+                    );
+                    self.status = ResponseStatus::ContentLength(len, vec![0_u8; 0]);
                 }
-                ResponseStatus::ContentLength(len) => {
-                    let mut buf: Vec<_> = vec![];
-                    self.reader.read_until(b'\n', &mut buf).await?;
+                ResponseStatus::ContentLength(len, buf) => {
+                    self.reader.read_until(b'\n', buf).await?;
                     assert_eq!(buf, "\r\n".as_bytes());
-                    self.status = ResponseStatus::ContentLengthNext(len.clone());
+                    self.status = ResponseStatus::ContentLengthNext(vec![0_u8; len.clone()]);
                 }
-                ResponseStatus::ContentLengthNext(len) => {
-                    let mut buf = vec![0; len.clone()];
-                    let read_len = self.reader.read_exact(&mut buf).await?;
-                    assert_eq!(len.clone(), read_len);
-                    // debug!(
-                    //     "response len: {len} body: {}",
-                    //     str::from_utf8(buf.as_slice()).unwrap()
-                    // );
+                ResponseStatus::ContentLengthNext(buf) => {
+                    let point = buf.iter().position(|c| *c == 0).expect("must have 0");
+                    self.reader.read_exact(&mut buf[point..]).await?;
+                    debug!(
+                        "response len: {} body: {}",
+                        buf.len(),
+                        str::from_utf8(buf.as_slice()).unwrap()
+                    );
                     let response: serde_json::Value = serde_json::from_slice(&buf)?;
                     if let Some(error) = response.get("error") {
                         return Err(anyhow!("LSP error: {}", error));
