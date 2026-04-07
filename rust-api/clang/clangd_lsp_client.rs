@@ -2,66 +2,50 @@ use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{info,debug};
+use log::{debug, info};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::lsp::{self, builder::Builder, index::FileIndex};
 
-
-
-pub fn main(
-    file_list: &str,
-    debug: bool,
+fn init_lsp_client(
+    rt: &tokio::runtime::Runtime,
     log_file: String,
     compile_commands_dir: String,
-    config: &str,
-) -> Result<()> {
-    let worker_threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .saturating_mul(1);
-
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("lsp-server-wrapper") // 设置线程名称
-        .enable_all() // 启用 IO 和 Time 驱动
-        .build()
-        .unwrap();
-    let handle: tokio::task::JoinHandle<Result<_, anyhow::Error>> = rt.spawn(async move {
+    debug: bool,
+) -> Result<crate::clang::lsp_server_wraper::Client> {
+    let handle: tokio::task::JoinHandle<
+        Result<crate::clang::lsp_server_wraper::Client, anyhow::Error>,
+    > = rt.spawn(async move {
         let client_wrapper = crate::clang::lsp_server_wraper::ClangdClient::new(
             &log_file,
-            compile_commands_dir.to_string(),
+            compile_commands_dir,
             debug,
-        )
-        .unwrap();
-        let client_to_request_sender = client_wrapper.warpper_loop().await.unwrap();
-        let rec = client_to_request_sender.initialize().expect("init fail");
-        let _ = rec.await.expect("get init responce fail");
-        client_to_request_sender
-            .initialized()
-            .expect("initalized fail");
+        )?;
+        let client_to_request_sender = client_wrapper.warpper_loop().await?;
+        let rec = client_to_request_sender.initialize()?;
+        let _ = rec
+            .await
+            .map_err(|e| anyhow!("get init response fail: {}", e))?;
+        client_to_request_sender.initialized()?;
         info!("LSP initalized");
         Ok(client_to_request_sender)
     });
-    let client_to_request_sender = rt.block_on(handle)??;
 
-    let file_content = fs::read(file_list)?;
-    let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
-        .lines()
-        .filter_map(Result::ok)
-        .filter(|file| !file.is_empty())
-        .map(|line| line.trim().to_string())
-        .collect();
+    let client_to_request_sender = rt
+        .block_on(handle)
+        .map_err(|e| anyhow!("init lsp task join fail: {}", e))??;
+    Ok(client_to_request_sender)
+}
 
-    let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
-    files_list.into_iter().try_for_each(|file_name| {
-        let file_index = FileIndex::from(file_name);
-        file_index_builder.insert(file_index)?;
-        Ok::<(), anyhow::Error>(())
-    })?;
-    let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
-
+fn wait_index_done(
+    rt: &tokio::runtime::Runtime,
+    client_to_request_sender: crate::clang::lsp_server_wraper::Client,
+    file_index_data_builder: lsp::builder::FileIndexDataBuilder,
+) -> Result<(
+    crate::clang::lsp_server_wraper::Client,
+    lsp::builder::FileIndexDataBuilder,
+)> {
     let handle = rt.spawn(async move {
         file_index_data_builder
             .file_builders()
@@ -83,7 +67,74 @@ pub fn main(
         client_to_request_sender.index_done().await?;
         Ok::<_, anyhow::Error>((client_to_request_sender, file_index_data_builder))
     });
-    let (client_to_request_sender, file_index_data_builder) = rt.block_on(handle)??;
+
+    rt.block_on(handle)
+        .map_err(|e| anyhow!("wait index done task join fail: {}", e))?
+}
+
+async fn fetch_file_semantic_tokens(
+    mut client: crate::clang::lsp_server_wraper::Client,
+    semaphore: Arc<Semaphore>,
+    file_index: FileIndex,
+    file_path: String,
+    file_lines: Vec<String>,
+) -> Result<(FileIndex, lsp::data::FileSemanticTokensData)> {
+    let permit = semaphore
+        .acquire_owned()
+        .await
+        .map_err(|e| anyhow!("semaphore acquire fail: {}", e))?;
+    client.did_open(&file_path, &file_lines)?;
+    let semantic_tokens_response = client.semantic_tokens_full(&file_path)?;
+    let semantic_tokens_response = semantic_tokens_response
+        .await
+        .map_err(|e| anyhow!("semantic token response recv fail: {}", e))?;
+    client.did_close(&file_path)?;
+    drop(permit);
+    debug!("获取语义标记成功: {}", file_path);
+    let semantic_tokens: lsp_types::SemanticTokens =
+        serde_json::from_value(semantic_tokens_response.val)?;
+    let semantic_tokens_data = lsp::data::FileSemanticTokensData::from(semantic_tokens);
+    Ok((file_index, semantic_tokens_data))
+}
+
+pub fn main(
+    file_list: &str,
+    debug: bool,
+    log_file: String,
+    compile_commands_dir: String,
+    config: &str,
+) -> Result<()> {
+    let worker_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .saturating_mul(1);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .thread_name("lsp-server-wrapper") // 设置线程名称
+        .enable_all() // 启用 IO 和 Time 驱动
+        .build()
+        .unwrap();
+    let client_to_request_sender = init_lsp_client(&rt, log_file, compile_commands_dir, debug)?;
+
+    let file_content = fs::read(file_list)?;
+    let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
+        .lines()
+        .filter_map(Result::ok)
+        .filter(|file| !file.is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+
+    let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
+    files_list.into_iter().try_for_each(|file_name| {
+        let file_index = FileIndex::from(file_name);
+        file_index_builder.insert(file_index)?;
+        Ok::<(), anyhow::Error>(())
+    })?;
+    let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
+
+    let (client_to_request_sender, file_index_data_builder) =
+        wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
     info!("index done");
 
     let semantic_token = rt.block_on(async {
@@ -102,7 +153,7 @@ pub fn main(
             .file_builders()
             .iter()
             .for_each(|file_builder| {
-                let mut client = client_to_request_sender.clone();
+                let client = client_to_request_sender.clone();
                 let semaphore = Arc::clone(&semaphore);
                 let file_index = file_builder.file_index().clone();
                 let file_path = file_builder
@@ -113,23 +164,8 @@ pub fn main(
                 let file_lines = file_builder.file_data().lines().to_vec();
 
                 join_set.spawn(async move {
-                    let _permit = semaphore
-                        .acquire_owned()
+                    fetch_file_semantic_tokens(client, semaphore, file_index, file_path, file_lines)
                         .await
-                        .map_err(|e| anyhow!("semaphore acquire fail: {}", e))?;
-                    client.did_open(&file_path, &file_lines)?;
-                    let semantic_tokens_response = client.semantic_tokens_full(&file_path)?;
-                    let semantic_tokens_response = semantic_tokens_response
-                        .await
-                        .map_err(|e| anyhow!("semantic token response recv fail: {}", e))?;
-                    client.did_close(&file_path)?;
-                    drop(_permit);
-                    debug!("获取语义标记成功: {}", file_path);
-                    let semantic_tokens: lsp_types::SemanticTokens =
-                        serde_json::from_value(semantic_tokens_response.val)?;
-                    let semantic_tokens_data =
-                        lsp::data::FileSemanticTokensData::from(semantic_tokens);
-                    Ok::<_, anyhow::Error>((file_index, semantic_tokens_data))
                 });
             });
 
