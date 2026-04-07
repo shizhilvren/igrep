@@ -8,7 +8,7 @@
     "clean-npm-module": "rm -rf node_modules",
     "preclean-all": "npm run clean-npm-module && npm run clean",
     "clean-all": "",
-    "build-wasm": "wasm-pack build  --target bundler --manifest-path rust-api/web_api/Cargo.toml",
+    "build-wasm": "wasm-pack build  -d ../../pkg --target bundler ./rust-api/web_api --manifest-path ./rust-api/web_api/Cargo.toml",
     "prebuildin": "npm run build-wasm",
     "buildin": "run-p type-check \"build-only {@}\" --",
     "prelink-ngram-index": "npm run buildin",
