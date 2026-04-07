@@ -45,6 +45,17 @@ pub struct FileSemanticTokensData {
     tokens: Vec<SemanticToken>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HoverData {
+    range: lsp_types::Range,
+    hover: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HoversData {
+    hovers: Vec<HoverData>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SemanticToken {
     pub delta_line: u32,
@@ -93,6 +104,18 @@ impl FileName {
 impl DirName {
     pub fn name(&self) -> &str {
         &self.name
+    }
+}
+
+impl HoversData{
+    pub fn hovers(&self) -> &[HoverData] {
+        &self.hovers
+    }
+}
+
+impl HoverData{
+    pub fn hover(&self) -> &str {
+        &self.hover
     }
 }
 
@@ -174,6 +197,47 @@ impl From<lsp_types::SemanticTokens> for FileSemanticTokensData {
         Self {
             tokens: value.data.into_iter().map(SemanticToken::from).collect(),
         }
+    }
+}
+
+impl TryFrom<lsp_types::Hover> for HoverData {
+    type Error = anyhow::Error;
+
+    fn try_from(value: lsp_types::Hover) -> Result<Self> {
+        match (value.contents, value.range) {
+            (lsp_types::HoverContents::Markup(markup), Some(range)) => Ok(Self {
+                range,
+                hover: markup.value,
+            }),
+            _ => Err(anyhow!("Hover data is missing range")),
+        }
+    }
+}
+
+impl TryFrom<Vec<lsp_types::Hover>> for HoversData {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Vec<lsp_types::Hover>) -> Result<Self> {
+        let mut hovers = value
+            .into_iter()
+            .map(HoverData::try_from)
+            .collect::<Result<Vec<_>>>()?;
+        hovers.sort_by(|a, b| {
+            a.range
+                .start
+                .line
+                .cmp(&b.range.start.line)
+                .then(a.range.start.character.cmp(&b.range.start.character))
+        });
+        // let ans = hovers.windows(2).try_for_each(|[a, b]| {
+        //     assert!(
+        //         a.range.start.line < b.range.start.line
+        //             || (a.range.start.line == b.range.start.line
+        //                 && a.range.start.character < b.range.start.character)
+        //     );
+        //     Ok(())
+        // })?;
+        Ok(Self { hovers })
     }
 }
 

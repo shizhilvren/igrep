@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use lsp_types::{
     ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
-    TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem, Uri,
+    Position, TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, Uri,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -305,6 +306,22 @@ impl Client {
         self.request("textDocument/semanticTokens/full", params)
     }
 
+    pub fn hover(
+        &mut self,
+        file_path: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<tokio::sync::oneshot::Receiver<ResponseToClientData>> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+
+        let params = TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri },
+            position: Position { line, character },
+        };
+
+        self.request("textDocument/hover", params)
+    }
+
     pub fn initialized(&self) -> Result<()> {
         let method = "initialized";
         let params = lsp_types::InitializedParams {};
@@ -450,7 +467,7 @@ impl ClangdClient {
             false => "info",
         };
         let jobs = std::thread::available_parallelism()
-            .map(|n| n.get().saturating_mul(1))
+            .map(|n| n.get().saturating_mul(2))
             .unwrap_or(2)
             .to_string();
         // Start clangd process
@@ -693,8 +710,9 @@ impl ClangdClient {
                             debug!("respose {:?}", &value);
                             let id_request = &value["id"];
                             let method = &value["method"];
-                            let result = &value["result"];
-                            if *id_request != serde_json::json!(null) && *result != serde_json::json!(null) {
+                            let has_result_field = value.get("result").is_some();
+                            let result = value.get("result").unwrap_or(&Value::Null);
+                            if *id_request != serde_json::json!(null) && has_result_field {
                                 let id_request = id_request.to_string();
                                 let id_request = id_request
                                     .parse::<u64>()
