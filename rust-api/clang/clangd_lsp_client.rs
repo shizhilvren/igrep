@@ -1,10 +1,14 @@
-use std::{fs, io::BufRead, path::PathBuf};
+use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
-use log::info;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{info,debug};
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::lsp::{self, builder::Builder, index::FileIndex};
+
+
 
 pub fn main(
     file_list: &str,
@@ -85,12 +89,21 @@ pub fn main(
     let semantic_token = rt.block_on(async {
         let mut join_set = JoinSet::new();
         let total = file_index_data_builder.file_builders().len();
+        let semaphore = Arc::new(Semaphore::new(worker_threads.mul(2).max(1)));
+        let progress_bar = ProgressBar::new(total as u64);
+        progress_bar.set_message("semantic tokens");
+        if let Ok(style) = ProgressStyle::with_template(
+            "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+        ) {
+            progress_bar.set_style(style.progress_chars("=> "));
+        }
 
         file_index_data_builder
             .file_builders()
             .iter()
             .for_each(|file_builder| {
                 let mut client = client_to_request_sender.clone();
+                let semaphore = Arc::clone(&semaphore);
                 let file_index = file_builder.file_index().clone();
                 let file_path = file_builder
                     .file_index()
@@ -100,13 +113,18 @@ pub fn main(
                 let file_lines = file_builder.file_data().lines().to_vec();
 
                 join_set.spawn(async move {
+                    let _permit = semaphore
+                        .acquire_owned()
+                        .await
+                        .map_err(|e| anyhow!("semaphore acquire fail: {}", e))?;
                     client.did_open(&file_path, &file_lines)?;
                     let semantic_tokens_response = client.semantic_tokens_full(&file_path)?;
                     let semantic_tokens_response = semantic_tokens_response
                         .await
                         .map_err(|e| anyhow!("semantic token response recv fail: {}", e))?;
                     client.did_close(&file_path)?;
-                    info!("获取语义标记成功: {}", file_path);
+                    drop(_permit);
+                    debug!("获取语义标记成功: {}", file_path);
                     let semantic_tokens: lsp_types::SemanticTokens =
                         serde_json::from_value(semantic_tokens_response.val)?;
                     let semantic_tokens_data =
@@ -117,10 +135,14 @@ pub fn main(
 
         let mut semantic_token = Vec::with_capacity(total);
         while let Some(task_result) = join_set.join_next().await {
-            let task_result = task_result
-                .map_err(|e| anyhow!("semantic token task join fail: {}", e))?;
-            semantic_token.push(task_result?);
+            let task_result =
+                task_result.map_err(|e| anyhow!("semantic token task join fail: {}", e))?;
+            let (file_index, semantic_tokens_data) = task_result?;
+            progress_bar.set_message(file_index.path().to_string_lossy().to_string());
+            semantic_token.push((file_index, semantic_tokens_data));
+            progress_bar.inc(1);
         }
+        progress_bar.finish_with_message("semantic tokens done");
         Ok::<Vec<_>, anyhow::Error>(semantic_token)
     })?;
     info!("all semantic tokens get finish.");

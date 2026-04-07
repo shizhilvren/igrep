@@ -40,3 +40,4 @@ tokio = { version = "1.51", features = [
     "process",
     "io-util",
 ] }
+indicatif = "0.17.11"
