@@ -2,6 +2,7 @@ use std::{fs, io::BufRead, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use log::info;
+use tokio::task::JoinSet;
 
 use crate::lsp::{self, builder::Builder, index::FileIndex};
 
@@ -12,8 +13,13 @@ pub fn main(
     compile_commands_dir: String,
     config: &str,
 ) -> Result<()> {
+    let worker_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .saturating_mul(1);
+
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(12) // 设置工作线程数为 4
+        .worker_threads(worker_threads)
         .thread_name("lsp-server-wrapper") // 设置线程名称
         .enable_all() // 启用 IO 和 Time 驱动
         .build()
@@ -43,20 +49,6 @@ pub fn main(
         .filter(|file| !file.is_empty())
         .map(|line| line.trim().to_string())
         .collect();
-
-    let first_file = files_list
-        .first()
-        .ok_or_else(|| anyhow!("file list is emppty"))?;
-
-    // // 在 LSP 服务器中打开文件
-    // client.open_file(first_file)?;
-    // info!("已打开文件: {}", first_file);
-
-    // client.did_close(first_file)?;
-    // info!("已关闭文件: {}", first_file);
-
-    // let _: Value = client.reader(-1)?;
-    // info!("LSP index finish");
 
     let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
     files_list.into_iter().try_for_each(|file_name| {
@@ -91,10 +83,13 @@ pub fn main(
     info!("index done");
 
     let semantic_token = rt.block_on(async {
-        let handles: Vec<_> = file_index_data_builder
+        let mut join_set = JoinSet::new();
+        let total = file_index_data_builder.file_builders().len();
+
+        file_index_data_builder
             .file_builders()
             .iter()
-            .map(|file_builder| {
+            .for_each(|file_builder| {
                 let mut client = client_to_request_sender.clone();
                 let file_index = file_builder.file_index().clone();
                 let file_path = file_builder
@@ -104,7 +99,7 @@ pub fn main(
                     .to_string();
                 let file_lines = file_builder.file_data().lines().to_vec();
 
-                tokio::spawn(async move {
+                join_set.spawn(async move {
                     client.did_open(&file_path, &file_lines)?;
                     let semantic_tokens_response = client.semantic_tokens_full(&file_path)?;
                     let semantic_tokens_response = semantic_tokens_response
@@ -117,14 +112,12 @@ pub fn main(
                     let semantic_tokens_data =
                         lsp::data::FileSemanticTokensData::from(semantic_tokens);
                     Ok::<_, anyhow::Error>((file_index, semantic_tokens_data))
-                })
-            })
-            .collect();
+                });
+            });
 
-        let mut semantic_token = Vec::with_capacity(handles.len());
-        for handle in handles {
-            let task_result = handle
-                .await
+        let mut semantic_token = Vec::with_capacity(total);
+        while let Some(task_result) = join_set.join_next().await {
+            let task_result = task_result
                 .map_err(|e| anyhow!("semantic token task join fail: {}", e))?;
             semantic_token.push(task_result?);
         }

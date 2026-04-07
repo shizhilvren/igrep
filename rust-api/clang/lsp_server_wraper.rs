@@ -410,7 +410,7 @@ impl Client {
             }
             _ => {
                 // Unknown notification
-                warn!("Unknown notification: {:?} {} {}", id, method, params);
+                debug!("Unknown notification: {:?} {} {}", id, method, params);
             }
         }
         Ok(false)
@@ -450,7 +450,7 @@ impl ClangdClient {
             false => "info",
         };
         let jobs = std::thread::available_parallelism()
-            .map(|n| n.get().saturating_mul(2))
+            .map(|n| n.get().saturating_mul(1))
             .unwrap_or(2)
             .to_string();
         // Start clangd process
