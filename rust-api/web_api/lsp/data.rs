@@ -39,6 +39,77 @@ pub struct SemanticToken {
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
+pub struct Position {
+    line: u32,
+    character: u32,
+}
+
+#[wasm_bindgen]
+pub struct HoverRange {
+    start: Position,
+    end: Position,
+}
+
+#[wasm_bindgen]
+impl Position {
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    pub fn character(&self) -> u32 {
+        self.character
+    }
+}
+
+#[wasm_bindgen]
+impl HoverRange {
+    pub fn start(&self) -> Position {
+        self.start.clone()
+    }
+
+    pub fn end(&self) -> Position {
+        self.end.clone()
+    }
+}
+
+#[wasm_bindgen]
+pub struct HoversData {
+    data: crate::lsp::data::HoversData,
+}
+
+#[wasm_bindgen]
+pub struct HoverData {
+    data: crate::lsp::data::HoverData,
+}
+
+#[wasm_bindgen]
+impl HoversData {
+    pub fn hovers(&self) -> Vec<HoverData> {
+        self.data
+            .hovers()
+            .iter()
+            .map(|h| HoverData::from(h.clone()))
+            .collect()
+    }
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: Vec<u8>) -> Self {
+        Self::try_from(&data).expect("data not correct")
+    }
+}
+
+#[wasm_bindgen]
+impl HoverData {
+    pub fn range(&self) -> HoverRange {
+        HoverRange::from(self.data.range())
+    }
+
+    pub fn hover(&self) -> String {
+        self.data.hover().to_string()
+    }
+}
+
+#[wasm_bindgen]
 impl SemanticToken {
     pub fn delta_line(&self) -> u32 {
         self.data.delta_line
@@ -162,6 +233,38 @@ impl From<crate::lsp::data::DirName> for DirName {
 }
 impl From<crate::lsp::data::SemanticToken> for SemanticToken {
     fn from(data: crate::lsp::data::SemanticToken) -> Self {
+        Self { data }
+    }
+}
+
+impl From<&lsp_types::Position> for Position {
+    fn from(value: &lsp_types::Position) -> Self {
+        Self {
+            line: value.line,
+            character: value.character,
+        }
+    }
+}
+
+impl From<&lsp_types::Range> for HoverRange {
+    fn from(value: &lsp_types::Range) -> Self {
+        Self {
+            start: Position::from(&value.start),
+            end: Position::from(&value.end),
+        }
+    }
+}
+
+impl TryFrom<&Vec<u8>> for HoversData {
+    type Error = anyhow::Error;
+    fn try_from(value: &Vec<u8>) -> anyhow::Result<Self> {
+        let d = crate::lsp::data::HoversData::from_data(value.as_slice())?;
+        Ok(Self { data: d })
+    }
+}
+
+impl From<crate::lsp::data::HoverData> for HoverData {
+    fn from(data: crate::lsp::data::HoverData) -> Self {
         Self { data }
     }
 }

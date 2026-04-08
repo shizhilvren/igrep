@@ -7,6 +7,11 @@ edition = "2024"
 name = "igrep"
 path = "rust-api/main.rs"
 
+
+[lib]
+crate-type = ["cdylib"]
+path = "rust-api/lib.rs"
+
 [dependencies]
 flate2 = { version = "1.0.17", features = [
     "zlib-rs",

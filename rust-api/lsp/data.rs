@@ -45,7 +45,7 @@ pub struct FileSemanticTokensData {
     tokens: Vec<SemanticToken>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HoverData {
     range: lsp_types::Range,
     hover: String,
@@ -107,15 +107,21 @@ impl DirName {
     }
 }
 
-impl HoversData{
+impl HoversData {
     pub fn hovers(&self) -> &[HoverData] {
         &self.hovers
     }
+    pub fn hover(&self) -> Option<&HoverData> {
+        self.hovers.first()
+    }
 }
 
-impl HoverData{
+impl HoverData {
     pub fn hover(&self) -> &str {
         &self.hover
+    }
+    pub fn range(&self) -> &lsp_types::Range {
+        &self.range
     }
 }
 

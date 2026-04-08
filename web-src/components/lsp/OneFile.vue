@@ -24,6 +24,23 @@ export class SemanticTokens {
         this.data = data
     }
 }
+
+export type HoverPosition = {
+    line: number
+    character: number
+}
+
+export class HoverDataModel {
+    readonly start: HoverPosition
+    readonly end: HoverPosition
+    readonly hover: string
+
+    constructor(start: HoverPosition, end: HoverPosition, hover: string) {
+        this.start = start
+        this.end = end
+        this.hover = hover
+    }
+}
 </script>
 
 <script setup lang="ts">
@@ -42,6 +59,7 @@ const props = defineProps<{
     code: string[]
     language: string
     semanticTokens?: SemanticTokens
+    hoverData?: HoverDataModel[]
 }>()
 
 const tokenTypeClassMap = [
@@ -131,6 +149,46 @@ function updateSemanticHighlight() {
     decorations.set(next)
 }
 
+function isPositionInRange(position: monaco.Position, range: monaco.Range): boolean {
+    const line = position.lineNumber
+    const column = position.column
+    const startsAfter = line > range.startLineNumber || (line === range.startLineNumber && column >= range.startColumn)
+    const endsBefore = line < range.endLineNumber || (line === range.endLineNumber && column <= range.endColumn)
+    return startsAfter && endsBefore
+}
+
+function updateHoverProvider() {
+    hoverDispose?.dispose()
+    hoverDispose = monaco.languages.registerHoverProvider(props.language, {
+        provideHover(_, position) {
+            const hovers = props.hoverData ?? []
+            if (hovers.length === 0) {
+                return null
+            }
+
+            for (const hover of hovers) {
+                const hoverRange = new monaco.Range(
+                    hover.start.line + 1,
+                    hover.start.character + 1,
+                    hover.end.line + 1,
+                    hover.end.character + 1,
+                )
+
+                if (!isPositionInRange(position, hoverRange)) {
+                    continue
+                }
+
+                return {
+                    range: hoverRange,
+                    contents: [{ value: hover.hover }],
+                }
+            }
+
+            return null
+        },
+    })
+}
+
 onMounted(async () => {
     loader.config({ monaco })
     await loader.init()
@@ -148,6 +206,7 @@ onMounted(async () => {
         wordWrap: 'off',
     })
 
+    updateHoverProvider()
     updateSemanticHighlight()
 })
 
@@ -171,6 +230,13 @@ watch(
         updateSemanticHighlight()
     },
     { deep: true },
+)
+
+watch(
+    () => props.language,
+    () => {
+        updateHoverProvider()
+    },
 )
 
 onBeforeUnmount(() => {

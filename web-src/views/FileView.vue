@@ -9,17 +9,17 @@
             base_path: normalizedPath
         }" />
         <div v-if="is_file" class="file-editor">
-            <OneFile v-bind="{ language: 'cpp', code: code, semanticTokens: semanticTokens }" />
+            <OneFile v-bind="{ language: 'cpp', code: code, semanticTokens: semanticTokens, hoverData: hoverData }" />
         </div>
     </main>
 </template>
 
 <script setup lang="ts">
-import { SemanticTokens, SemanticToken } from "@/components/lsp/OneFile.vue";
+import { HoverDataModel, SemanticTokens, SemanticToken } from "@/components/lsp/OneFile.vue";
 import FilePathBar from '@/components/lsp/FilePathBar.vue';
 import OneFile from '@/components/lsp/OneFile.vue';
 import { computed, ref, watch } from 'vue';
-import { PathIndex, TreeData } from 'igrep';
+import { HoversData, PathIndex, TreeData } from 'igrep';
 import { fetchFileData } from "@/utils/utils"
 import DirTree from '@/components/lsp/DirTree.vue';
 
@@ -30,6 +30,7 @@ const props = defineProps<{
 const dir_data = ref<DirData>(new DirData([], []))
 const code = ref<string[]>([])
 const semanticTokens = ref<SemanticTokens | undefined>(undefined)
+const hoverData = ref<HoverDataModel[]>([])
 const is_dir = ref(false)
 const is_file = ref(false)
 
@@ -57,6 +58,7 @@ async function refreshDirData(basePath: string[]) {
     if (tree_data.is_dir()) {
         is_dir.value = true
         is_file.value = false
+        hoverData.value = []
         const dirData = tree_data.dir_data()!
         const files = dirData.files().map((f) => f.name())
         const dirs = dirData.dirs().map((d) => d.name())
@@ -68,6 +70,8 @@ async function refreshDirData(basePath: string[]) {
         code.value = fileData.lines()
         semanticTokens.value = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
             (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
+        const hoverRawData = await get_hover_data(basePath)
+        hoverData.value = parseHoverData(hoverRawData)
         console.log(code.value)
     }
 }
@@ -85,10 +89,42 @@ watch(normalizedPath, async (newPath, oldPath) => {
 </script>
 
 <script lang="ts">
+function parseHoverData(data: Uint8Array | undefined): HoverDataModel[] {
+    if (!data) {
+        return []
+    }
+
+    return new HoversData(data).hovers().map((hover) => {
+        const range = hover.range()
+        const start = range.start()
+        const end = range.end()
+        const hoverText = hover.hover()
+
+        return new HoverDataModel(
+            {
+                line: start.line(),
+                character: start.character(),
+            },
+            {
+                line: end.line(),
+                character: end.character(),
+            },
+            hoverText,
+        )
+    })
+}
+
 async function get_tree_data(path: string[]) {
     let path_str = path.join("/");
     let path_index = new PathIndex(path_str);
     let data = await fetchFileData(path_index.path_str("lsp-index") + "/tree.data");
+    return data
+}
+
+async function get_hover_data(path: string[]) {
+    let path_str = path.join("/");
+    let path_index = new PathIndex(path_str);
+    let data = await fetchFileData(path_index.path_str("lsp-index") + "/hover.data");
     return data
 }
 
