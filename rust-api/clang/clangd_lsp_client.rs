@@ -118,6 +118,22 @@ pub async fn handle_semantics(
             })
         })
         .map(|index| index as u32);
+    let operator_token_type_index = client
+        .get_semantic_tokens_server()
+        .and_then(|legend| {
+            legend.token_types.iter().position(|token_type| {
+                token_type.as_str() == lsp_types::SemanticTokenType::OPERATOR.as_str()
+            })
+        })
+        .map(|index| index as u32);
+    let comment_token_type_index = client
+        .get_semantic_tokens_server()
+        .and_then(|legend| {
+            legend.token_types.iter().position(|token_type| {
+                token_type.as_str() == lsp_types::SemanticTokenType::COMMENT.as_str()
+            })
+        })
+        .map(|index| index as u32);
 
     let ans = tokens
         .data
@@ -135,13 +151,18 @@ pub async fn handle_semantics(
             Some((*row, *col, token.token_type))
         })
         .filter(|(row, col, token_type)| {
-            let should_hover = keyword_token_type_index != Some(*token_type);
+            let should_hover = keyword_token_type_index != Some(*token_type)
+                && operator_token_type_index != Some(*token_type)
+                && comment_token_type_index != Some(*token_type);
             if !should_hover {
-                trace!("跳过 keyword 的悬停请求: {}:{}:{}", file_path, row, col);
+                trace!(
+                    "跳过 keyword/operator/comment 的悬停请求: {}:{}:{}",
+                    file_path, row, col
+                );
             }
             should_hover
         })
-        .map(|(row, col, _)| (row, col))
+        .map(|(row, col, token_type)| (row, col, token_type))
         .collect::<Vec<_>>();
 
     if let Some(progress_bar) = hover_progress_bar {
@@ -151,7 +172,7 @@ pub async fn handle_semantics(
     }
 
     let mut hovers = Vec::new();
-    for (row, col) in ans {
+    for (row, col, token_type) in ans {
         debug!("请求悬停信息: {}:{}:{}", file_path, row, col);
         let hover_response = client
             .hover(file_path, row, col)?
@@ -164,7 +185,15 @@ pub async fn handle_semantics(
                 hovers.push(hover);
             }
             Err(e) => {
-                trace!("Failed to parse hover response: {}", e);
+                let token_type_name = client
+                    .get_semantic_tokens_server()
+                    .and_then(|legend| legend.token_types.get(token_type as usize))
+                    .map(|t| t.as_str())
+                    .unwrap_or("<unknown>");
+                trace!(
+                    "Failed to parse hover response: {}, token_type: {} ({})",
+                    e, token_type, token_type_name
+                );
             }
         }
         if let Some(progress_bar) = hover_progress_bar {
