@@ -23,10 +23,25 @@ fn init_lsp_client(
         )?;
         let client_to_request_sender = client_wrapper.warpper_loop().await?;
         let rec = client_to_request_sender.initialize()?;
-        let _ = rec
+        let data = rec
             .await
             .map_err(|e| anyhow!("get init response fail: {}", e))?;
+        let capabilities: lsp_types::InitializeResult = serde_json::from_value(data.val)?;
+        trace!("LSP server capabilities: {:?}", capabilities);
+        let semanctic_tokens_server = capabilities.capabilities.semantic_tokens_provider.map_or(
+            Err(anyhow!("lsp server not support semantic tokens")),
+            |s| match s {
+                lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(s) => {
+                    Ok(s.legend)
+                }
+                lsp_types::SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
+                    s,
+                ) => Ok(s.semantic_tokens_options.legend),
+            },
+        )?;
         client_to_request_sender.initialized()?;
+        let mut client_to_request_sender = client_to_request_sender;
+        client_to_request_sender.set_semantic_tokens_server(semanctic_tokens_server);
         info!("LSP initalized");
         Ok(client_to_request_sender)
     });
@@ -90,6 +105,15 @@ pub async fn handle_semantics(
     file_path: &str,
     tokens: &lsp_types::SemanticTokens,
 ) -> Result<HoversData> {
+    let keyword_token_type_index = client
+        .get_semantic_tokens_server()
+        .and_then(|legend| {
+            legend.token_types.iter().position(|token_type| {
+                token_type.as_str() == lsp_types::SemanticTokenType::KEYWORD.as_str()
+            })
+        })
+        .map(|index| index as u32);
+
     let ans = tokens
         .data
         .iter()
@@ -103,8 +127,16 @@ pub async fn handle_semantics(
                     *col = token.delta_start;
                 }
             }
-            Some((row.clone(), col.clone()))
+            Some((*row, *col, token.token_type))
         })
+        .filter(|(row, col, token_type)| {
+            let should_hover = keyword_token_type_index != Some(*token_type);
+            if !should_hover {
+                trace!("跳过 keyword 的悬停请求: {}:{}:{}", file_path, row, col);
+            }
+            should_hover
+        })
+        .map(|(row, col, _)| (row, col))
         .collect::<Vec<_>>();
     let mut hovers = Vec::new();
     for (row, col) in ans {
@@ -167,7 +199,7 @@ pub fn main(
         wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
     info!("index done");
 
-    let semantic_token = rt.block_on(async {
+    let data_tokens = rt.block_on(async {
         let mut join_set = JoinSet::new();
         let total = file_index_data_builder.file_builders().len();
         let semaphore = Arc::new(Semaphore::new(worker_threads.mul(1).max(1).min(9999)));
@@ -215,22 +247,22 @@ pub fn main(
                 });
             });
 
-        let mut semantic_token = Vec::with_capacity(total);
+        let mut data_tokens = Vec::with_capacity(total);
         while let Some(task_result) = join_set.join_next().await {
             let task_result: Result<_, anyhow::Error> =
                 task_result.map_err(|e| anyhow!("semantic token task join fail: {}", e))?;
             let (file_index, semantic_tokens_data, hovers) = task_result?;
             progress_bar.set_message(file_index.path().to_string_lossy().to_string());
-            semantic_token.push((file_index, semantic_tokens_data, hovers));
+            data_tokens.push((file_index, semantic_tokens_data, hovers));
             progress_bar.inc(1);
         }
         progress_bar.finish_with_message("semantic tokens done");
-        Ok::<Vec<_>, anyhow::Error>(semantic_token)
+        Ok::<Vec<_>, anyhow::Error>(data_tokens)
     })?;
     info!("all semantic tokens get finish.");
 
     if debug {
-        semantic_token
+        data_tokens
             .iter()
             .try_for_each(|(file_index, semantic_tokens, hovers)| {
                 info!(
@@ -238,19 +270,17 @@ pub fn main(
                     file_index.path(),
                     semantic_tokens.tokens().len(),
                     hovers.hovers().len(),
-                    hovers.hovers().iter().map(|t| t.hover().len() as u64).sum::<u64>()
+                    hovers
+                        .hovers()
+                        .iter()
+                        .map(|t| t.hover().len() as u64)
+                        .sum::<u64>()
                 );
                 Ok::<(), anyhow::Error>(())
             })?;
     }
 
-    let builder = Builder::try_from((
-        file_index_data_builder,
-        semantic_token
-            .into_iter()
-            .map(|(file_index, semantic_tokens, hovers)| (file_index, semantic_tokens))
-            .collect(),
-    ))?;
+    let builder = Builder::try_from((file_index_data_builder, data_tokens))?;
     builder.dump(PathBuf::from(config).as_path())?;
 
     // files_list.into_iter().try_for_each(|file| {

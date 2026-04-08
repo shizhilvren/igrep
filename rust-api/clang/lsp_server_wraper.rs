@@ -46,6 +46,7 @@ pub struct Client {
     request_tx: mpsc::UnboundedSender<ClientToRequestData>,
     index_done_tx: mpsc::UnboundedSender<()>,
     index_done_rx: Option<mpsc::UnboundedReceiver<()>>,
+    semanctic_tokens_server: Option<lsp_types::SemanticTokensLegend>,
 }
 impl Clone for Client {
     fn clone(&self) -> Self {
@@ -53,6 +54,7 @@ impl Clone for Client {
             request_tx: self.request_tx.clone(),
             index_done_tx: self.index_done_tx.clone(),
             index_done_rx: None,
+            semanctic_tokens_server: self.semanctic_tokens_server.clone(),
         }
     }
 }
@@ -360,6 +362,14 @@ impl Client {
                 .map_or(Err(anyhow!("not get index done")), |_| Ok(())),
             None => Err(anyhow!("this is cloned , cannot wait")),
         }
+    }
+
+    pub fn set_semantic_tokens_server(&mut self, legend: lsp_types::SemanticTokensLegend) {
+        self.semanctic_tokens_server = Some(legend);
+    }
+
+    pub fn get_semantic_tokens_server(&self) -> Option<&lsp_types::SemanticTokensLegend> {
+        self.semanctic_tokens_server.as_ref()
     }
 
     fn request<P: serde::Serialize>(
@@ -855,6 +865,7 @@ impl From<mpsc::UnboundedSender<ClientToRequestData>> for Client {
             request_tx: sender,
             index_done_tx: tx,
             index_done_rx: Some(rx),
+            semanctic_tokens_server: None,
         }
     }
 }

@@ -274,6 +274,7 @@ impl TryFrom<&FileIndex> for FileContentData {
 impl FromToData<'_> for FileData {}
 impl FromToData<'_> for TreeData {}
 impl FromToData<'_> for DirData {}
+impl FromToData<'_> for HoversData {}
 
 pub trait FromToData<'a> {
     fn to_data(&self) -> Result<Vec<u8>>

@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use log::{debug, info, warn};
+use lsp_types::Hover;
 use rayon::iter::*;
 use std::{
     collections::{HashMap, HashSet},
@@ -7,14 +8,18 @@ use std::{
 };
 
 use crate::lsp::{
-    data::{DirName, FileContentData, FileData, FileName, FileSemanticTokensData, TreeData},
+    data::{
+        DirName, FileContentData, FileData, FileName, FileSemanticTokensData, HoverData,
+        HoversData, TreeData,
+    },
     index::{FileIndex, PathIndex},
-    path::TreeDataPath,
+    path::{HoverDataPath, TreeDataPath},
 };
 
 pub struct Builder {
     // datas: Vec<FileBuilder>,
     datas: Vec<TreeBuilder>,
+    hovers: Vec<HoverBuilder>,
 }
 
 pub struct FileIndexBuilder {
@@ -33,6 +38,11 @@ pub struct FileDataBuilder {
 pub struct TreeBuilder {
     path_index: PathIndex,
     tree_data: TreeData,
+}
+
+pub struct HoverBuilder {
+    file_index: FileIndex,
+    hover_data: HoversData,
 }
 
 impl FileDataBuilder {
@@ -72,6 +82,7 @@ impl Builder {
             })?;
         }
         self.dump_tree_data(base_path)?;
+        self.dump_hover_data(base_path)?;
         Ok(())
     }
 }
@@ -81,6 +92,18 @@ impl Builder {
         self.datas
             .par_iter()
             .try_for_each(|tree_builder| tree_builder.dump(base_path))
+    }
+    fn dump_hover_data(&self, base_path: &Path) -> Result<()> {
+        self.hovers
+            .par_iter()
+            .try_for_each(|hover_builder| hover_builder.dump(base_path))
+    }
+}
+
+impl HoverBuilder {
+    fn dump(&self, base_path: &Path) -> Result<()> {
+        let hover_data_path = HoverDataPath::from(&self.file_index);
+        hover_data_path.dump(base_path, &self.hover_data)
     }
 }
 
@@ -111,6 +134,15 @@ impl TryFrom<FileIndex> for FileDataBuilder {
     }
 }
 
+impl From<(FileIndex, HoversData)> for HoverBuilder {
+    fn from((file_index, hover_data): (FileIndex, HoversData)) -> Self {
+        Self {
+            file_index,
+            hover_data,
+        }
+    }
+}
+
 impl From<(PathIndex, TreeData)> for TreeBuilder {
     fn from(value: (PathIndex, TreeData)) -> Self {
         Self {
@@ -123,15 +155,15 @@ impl From<(PathIndex, TreeData)> for TreeBuilder {
 impl
     TryFrom<(
         FileIndexDataBuilder,
-        Vec<(FileIndex, FileSemanticTokensData)>,
+        Vec<(FileIndex, FileSemanticTokensData, HoversData)>,
     )> for Builder
 {
     type Error = anyhow::Error;
 
     fn try_from(
-        (file_index_data_builder, semantic_tokens): (
+        (file_index_data_builder, data_tokens): (
             FileIndexDataBuilder,
-            Vec<(FileIndex, FileSemanticTokensData)>,
+            Vec<(FileIndex, FileSemanticTokensData, HoversData)>,
         ),
     ) -> Result<Self> {
         let file_builders = file_index_data_builder.file_builder;
@@ -193,19 +225,32 @@ impl
             ret
         })?;
 
-        let mut semantic_tokens_map: HashMap<FileIndex, FileSemanticTokensData> =
-            semantic_tokens.into_iter().collect();
+        let mut semantic_tokens_map: HashMap<FileIndex, (FileSemanticTokensData, HoversData)> =
+            data_tokens
+                .into_iter()
+                .map(|(file_index, semantic_tokens_data, hovers_data)| {
+                    (file_index, (semantic_tokens_data, hovers_data))
+                })
+                .collect();
         let mut path_file_set: HashMap<PathIndex, FileData> = HashMap::new();
+        let mut path_hover_set: HashMap<FileIndex, HoversData> = HashMap::new();
         file_builders.into_iter().try_for_each(|file_builder| {
             let file_index = file_builder.file_index;
             let file_data = file_builder.file_data;
-            let file_data =
-                FileData::try_from((file_data, semantic_tokens_map.remove(&file_index)))?;
+            let semantic_tokens = semantic_tokens_map.remove(&file_index);
+            let (semantic_tokens, hovers_data) =
+                semantic_tokens.map_or((None, None), |(a, b)| (Some(a), Some(b)));
+            let file_data = FileData::try_from((file_data, semantic_tokens))?;
             let path = file_index.path();
             let path_index = PathIndex::from(path.clone());
             path_file_set
                 .insert(path_index, file_data)
                 .map_or(Ok(()), |_| Err(anyhow!("{:?} is exist", path)))?;
+            hovers_data.map_or(Ok(()), |d| {
+                path_hover_set.insert(file_index, d).map_or(Ok(()), |_| {
+                    Err(anyhow!("Hover data for {:?} is exist", path))
+                })
+            })?;
             Ok::<(), anyhow::Error>(())
         })?;
         let path_file_set = path_file_set
@@ -226,7 +271,14 @@ impl
             .chain(path_dir_set.into_iter())
             .map(TreeBuilder::from)
             .collect::<Vec<_>>();
-        Ok(Self { datas: path_set })
+        let hovers = path_hover_set
+            .into_iter()
+            .map(|(k, v)| HoverBuilder::from((k, v)))
+            .collect::<Vec<_>>();
+        Ok(Self {
+            datas: path_set,
+            hovers,
+        })
     }
 }
 
