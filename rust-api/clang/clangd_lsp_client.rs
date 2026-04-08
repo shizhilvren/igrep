@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, trace, warn};
-use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use log::{debug, info, trace};
+use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -89,6 +89,7 @@ fn wait_index_done(
 async fn fetch_file_semantic_tokens(
     client: &mut crate::clang::lsp_server_wraper::Client,
     file_path: &str,
+    progress_bar: Option<&ProgressBar>,
 ) -> Result<lsp_types::SemanticTokens> {
     let semantic_tokens_response = client.semantic_tokens_full(file_path)?;
     let semantic_tokens_response = semantic_tokens_response
@@ -97,6 +98,9 @@ async fn fetch_file_semantic_tokens(
     debug!("获取语义标记成功: {}", file_path);
     let semantic_tokens: lsp_types::SemanticTokens =
         serde_json::from_value(semantic_tokens_response.val)?;
+    if let Some(progress_bar) = progress_bar {
+        progress_bar.inc(1);
+    }
     Ok(semantic_tokens)
 }
 
@@ -104,6 +108,7 @@ pub async fn handle_semantics(
     client: &mut crate::clang::lsp_server_wraper::Client,
     file_path: &str,
     tokens: &lsp_types::SemanticTokens,
+    hover_progress_bar: Option<&ProgressBar>,
 ) -> Result<HoversData> {
     let keyword_token_type_index = client
         .get_semantic_tokens_server()
@@ -138,6 +143,13 @@ pub async fn handle_semantics(
         })
         .map(|(row, col, _)| (row, col))
         .collect::<Vec<_>>();
+
+    if let Some(progress_bar) = hover_progress_bar {
+        let base_len = progress_bar.length().unwrap_or(0);
+        progress_bar.set_length(base_len + ans.len() as u64);
+        progress_bar.set_message(format!("hover {}", file_path));
+    }
+
     let mut hovers = Vec::new();
     for (row, col) in ans {
         debug!("请求悬停信息: {}:{}:{}", file_path, row, col);
@@ -154,6 +166,9 @@ pub async fn handle_semantics(
             Err(e) => {
                 trace!("Failed to parse hover response: {}", e);
             }
+        }
+        if let Some(progress_bar) = hover_progress_bar {
+            progress_bar.inc(1);
         }
     }
     HoversData::try_from(hovers)
@@ -203,7 +218,8 @@ pub fn main(
         let mut join_set = JoinSet::new();
         let total = file_index_data_builder.file_builders().len();
         let semaphore = Arc::new(Semaphore::new(worker_threads.mul(1).max(1).min(9999)));
-        let progress_bar = ProgressBar::new(total as u64);
+        let multi_progress = Arc::new(MultiProgress::new());
+        let progress_bar = multi_progress.add(ProgressBar::new(total as u64));
         progress_bar.set_message("semantic tokens");
         if let Ok(style) = ProgressStyle::with_template(
             "[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
@@ -225,25 +241,63 @@ pub fn main(
                     .to_string();
                 let hover_file_path = file_path.clone();
                 let file_lines = file_builder.file_data().lines().to_vec();
+                let multi_progress = Arc::clone(&multi_progress);
 
                 join_set.spawn(async move {
-                    let _open_span_permit = semaphore
-                        .acquire_owned()
-                        .await
-                        .map_err(|e| anyhow!("semaphore acquire fail: {}", e))?;
-                    trace!("start to get semantic tokens: {}", file_path);
-                    client.did_open(&file_path, &file_lines)?;
-                    let semantic_tokens =
-                        fetch_file_semantic_tokens(&mut client, &file_path).await?;
-                    trace!("semantic tokens get finish: {}", file_path);
-                    let hovers =
-                        handle_semantics(&mut client, &hover_file_path, &semantic_tokens).await?;
-                    client.did_close(&file_path)?;
-                    trace!("semantic tokens and hovers get finish: {}", file_path);
-                    let semantic_tokens_data =
-                        lsp::data::FileSemanticTokensData::from(semantic_tokens);
+                    let result = async {
+                        let _open_span_permit = semaphore
+                            .acquire_owned()
+                            .await
+                            .map_err(|e| anyhow!("semaphore acquire fail: {}", e))?;
 
-                    Ok((file_index, semantic_tokens_data, hovers))
+                        let hover_progress_bar = multi_progress.add(ProgressBar::new_spinner());
+                        if let Ok(style) = ProgressStyle::with_template(
+                            "  [{elapsed_precise}] [{bar:30.green/black}] {pos}/{len} {msg}",
+                        ) {
+                            hover_progress_bar.set_style(style.progress_chars("=> "));
+                        }
+                        hover_progress_bar.enable_steady_tick(Duration::from_millis(700));
+                        hover_progress_bar.set_length(1);
+                        hover_progress_bar.set_position(0);
+                        hover_progress_bar.set_message(format!("semantic {}", file_path));
+
+                        trace!("start to get semantic tokens: {}", file_path);
+                        client.did_open(&file_path, &file_lines)?;
+
+                        let semantic_and_hovers_result = async {
+                            let semantic_tokens = fetch_file_semantic_tokens(
+                                &mut client,
+                                &file_path,
+                                Some(&hover_progress_bar),
+                            )
+                            .await?;
+                            trace!("semantic tokens get finish: {}", file_path);
+
+                            let hovers = handle_semantics(
+                                &mut client,
+                                &hover_file_path,
+                                &semantic_tokens,
+                                Some(&hover_progress_bar),
+                            )
+                            .await?;
+                            Ok::<_, anyhow::Error>((semantic_tokens, hovers))
+                        }
+                        .await;
+
+                        hover_progress_bar.finish_and_clear();
+                        let (semantic_tokens, hovers) = semantic_and_hovers_result?;
+
+                        trace!("semantic tokens get finish: {}", file_path);
+
+                        client.did_close(&file_path)?;
+                        trace!("semantic tokens and hovers get finish: {}", file_path);
+                        let semantic_tokens_data =
+                            lsp::data::FileSemanticTokensData::from(semantic_tokens);
+
+                        Ok::<_, anyhow::Error>((file_index, semantic_tokens_data, hovers))
+                    }
+                    .await;
+                    result
                 });
             });
 
