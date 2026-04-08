@@ -55,6 +55,17 @@ let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let hoverDispose: monaco.IDisposable | null = null
 
+type SortedHoverItem = {
+    startLine: number
+    startChar: number
+    endLine: number
+    endChar: number
+    hover: string
+}
+
+let sortedHoverItems: SortedHoverItem[] = []
+let sortedHoverSource: HoverDataModel[] | undefined = undefined
+
 const props = defineProps<{
     code: string[]
     language: string
@@ -157,34 +168,121 @@ function isPositionInRange(position: monaco.Position, range: monaco.Range): bool
     return startsAfter && endsBefore
 }
 
+function comparePosition(aLine: number, aChar: number, bLine: number, bChar: number): number {
+    if (aLine !== bLine) {
+        return aLine - bLine
+    }
+    return aChar - bChar
+}
+
+function buildSortedHoverItems(hovers: HoverDataModel[] | undefined): SortedHoverItem[] {
+    if (!hovers || hovers.length === 0) {
+        return []
+    }
+
+    return hovers
+        .map((hover) => ({
+            startLine: hover.start.line + 1,
+            startChar: hover.start.character + 1,
+            endLine: hover.end.line + 1,
+            endChar: hover.end.character + 1,
+            hover: hover.hover,
+        }))
+        .sort((a, b) => {
+            const startCmp = comparePosition(a.startLine, a.startChar, b.startLine, b.startChar)
+            if (startCmp !== 0) {
+                return startCmp
+            }
+            return comparePosition(a.endLine, a.endChar, b.endLine, b.endChar)
+        })
+}
+
+function ensureSortedHoverItems() {
+    if (sortedHoverSource === props.hoverData) {
+        return
+    }
+    sortedHoverSource = props.hoverData
+    sortedHoverItems = buildSortedHoverItems(props.hoverData)
+}
+
+function containsPosition(item: SortedHoverItem, position: monaco.Position): boolean {
+    const startCmp = comparePosition(position.lineNumber, position.column, item.startLine, item.startChar)
+    if (startCmp < 0) {
+        return false
+    }
+    const endCmp = comparePosition(position.lineNumber, position.column, item.endLine, item.endChar)
+    return endCmp <= 0
+}
+
+function findHoverByBinarySearch(position: monaco.Position): SortedHoverItem | undefined {
+    if (sortedHoverItems.length === 0) {
+        return undefined
+    }
+
+    let left = 0
+    let right = sortedHoverItems.length - 1
+    let candidate = -1
+
+    while (left <= right) {
+        const mid = left + Math.floor((right - left) / 2)
+        const item = sortedHoverItems[mid]
+        if (!item) {
+            break
+        }
+        const cmp = comparePosition(item.startLine, item.startChar, position.lineNumber, position.column)
+
+        if (cmp <= 0) {
+            candidate = mid
+            left = mid + 1
+        } else {
+            right = mid - 1
+        }
+    }
+
+    if (candidate === -1) {
+        return undefined
+    }
+
+    const current = sortedHoverItems[candidate]
+    if (current && containsPosition(current, position)) {
+        return current
+    }
+
+    if (candidate > 0) {
+        const previous = sortedHoverItems[candidate - 1]
+        if (previous && containsPosition(previous, position)) {
+            return previous
+        }
+    }
+
+    return undefined
+}
+
 function updateHoverProvider() {
+    ensureSortedHoverItems()
     hoverDispose?.dispose()
     hoverDispose = monaco.languages.registerHoverProvider(props.language, {
         provideHover(_, position) {
-            const hovers = props.hoverData ?? []
-            if (hovers.length === 0) {
+            const hover = findHoverByBinarySearch(position)
+            if (!hover) {
                 return null
             }
 
-            for (const hover of hovers) {
-                const hoverRange = new monaco.Range(
-                    hover.start.line + 1,
-                    hover.start.character + 1,
-                    hover.end.line + 1,
-                    hover.end.character + 1,
-                )
+            const hoverRange = new monaco.Range(
+                hover.startLine,
+                hover.startChar,
+                hover.endLine,
+                hover.endChar,
+            )
 
-                if (!isPositionInRange(position, hoverRange)) {
-                    continue
-                }
-
-                return {
-                    range: hoverRange,
-                    contents: [{ value: hover.hover }],
-                }
+            if (!isPositionInRange(position, hoverRange)) {
+                return null
             }
 
-            return null
+            return {
+                range: hoverRange,
+                contents: [{ value: hover.hover }],
+            }
         },
     })
 }
@@ -235,6 +333,14 @@ watch(
 watch(
     () => props.language,
     () => {
+        updateHoverProvider()
+    },
+)
+
+watch(
+    () => props.hoverData,
+    () => {
+        sortedHoverSource = undefined
         updateHoverProvider()
     },
 )
