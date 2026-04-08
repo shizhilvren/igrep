@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, info, trace};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -13,6 +14,14 @@ fn init_lsp_client(
     compile_commands_dir: String,
     debug: bool,
 ) -> Result<crate::clang::lsp_server_wraper::Client> {
+    let compile_commands_path = PathBuf::from(&compile_commands_dir).join("compile_commands.json");
+    if !compile_commands_path.is_file() {
+        return Err(anyhow!(
+            "missing required file: {}",
+            compile_commands_path.display()
+        ));
+    }
+
     let handle: tokio::task::JoinHandle<
         Result<crate::clang::lsp_server_wraper::Client, anyhow::Error>,
     > = rt.spawn(async move {
@@ -221,7 +230,6 @@ pub fn main(
         .enable_all() // 启用 IO 和 Time 驱动
         .build()
         .unwrap();
-    let client_to_request_sender = init_lsp_client(&rt, log_file, compile_commands_dir, debug)?;
 
     let file_content = fs::read(file_list)?;
     let files_list: Vec<String> = std::io::BufReader::new(&file_content[..])
@@ -231,14 +239,18 @@ pub fn main(
         .map(|line| line.trim().to_string())
         .collect();
 
+    info!("build file index");
     let mut file_index_builder = lsp::builder::FileIndexBuilder::from(());
     files_list.into_iter().try_for_each(|file_name| {
         let file_index = FileIndex::from(file_name);
         file_index_builder.insert(file_index)?;
         Ok::<(), anyhow::Error>(())
     })?;
+    info!("file index build done, start read file content");
     let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
+    info!("file content read done, start init lsp client");
 
+    let client_to_request_sender = init_lsp_client(&rt, log_file, compile_commands_dir, debug)?;
     let (client_to_request_sender, file_index_data_builder) =
         wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
     info!("index done");
