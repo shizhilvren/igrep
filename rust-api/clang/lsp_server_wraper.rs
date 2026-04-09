@@ -470,15 +470,23 @@ impl ClangdClient {
     }
 
     /// Start a new clangd server process and initialize the LSP connection
-    pub fn new(log_path: &String, compile_commands_dir: String, debug: bool) -> Result<Self> {
+    pub fn new(
+        log_path: &String,
+        compile_commands_dir: String,
+        debug: bool,
+        jobs: Option<usize>,
+    ) -> Result<Self> {
         let log_file = std::fs::File::create(log_path)?;
         let log_level = match debug {
             true => "verbose",
             false => "info",
         };
-        let jobs = std::thread::available_parallelism()
-            .map(|n| n.get().saturating_mul(3))
-            .unwrap_or(2)
+        let jobs = jobs
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get().saturating_mul(2))
+                    .unwrap_or(2)
+            })
             .to_string();
         // Start clangd process
         let child = tokio::process::Command::new("clangd")

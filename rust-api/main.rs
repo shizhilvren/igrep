@@ -106,6 +106,9 @@ struct ClangIndexArgs {
 
     #[arg(short, long, required = true)]
     file_list: String,
+
+    #[arg(short = 'j', long)]
+    jobs: Option<usize>,
 }
 
 fn main() -> Result<()> {
@@ -129,6 +132,7 @@ fn main() -> Result<()> {
                 args.log.clone(),
                 args.compile_commands_dir.to_string(),
                 &args.config,
+                args.jobs,
             )
             .map_err(|e| anyhow!("Failed to run Clang index: {}", e))
         }

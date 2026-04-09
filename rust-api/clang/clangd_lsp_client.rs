@@ -13,6 +13,7 @@ fn init_lsp_client(
     log_file: String,
     compile_commands_dir: String,
     debug: bool,
+    jobs: Option<usize>,
 ) -> Result<crate::clang::lsp_server_wraper::Client> {
     let compile_commands_path = PathBuf::from(&compile_commands_dir).join("compile_commands.json");
     if !compile_commands_path.is_file() {
@@ -29,6 +30,7 @@ fn init_lsp_client(
             &log_file,
             compile_commands_dir,
             debug,
+            jobs,
         )?;
         let client_to_request_sender = client_wrapper.warpper_loop().await?;
         let rec = client_to_request_sender.initialize()?;
@@ -218,6 +220,7 @@ pub fn main(
     log_file: String,
     compile_commands_dir: String,
     config: &str,
+    jobs: Option<usize>,
 ) -> Result<()> {
     let worker_threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -250,7 +253,8 @@ pub fn main(
     let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
     info!("file content read done, start init lsp client");
 
-    let client_to_request_sender = init_lsp_client(&rt, log_file, compile_commands_dir, debug)?;
+    let client_to_request_sender =
+        init_lsp_client(&rt, log_file, compile_commands_dir, debug, jobs)?;
     let (client_to_request_sender, file_index_data_builder) =
         wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
     info!("index done");
