@@ -308,6 +308,21 @@ impl Client {
         self.request("textDocument/semanticTokens/full", params)
     }
 
+    pub fn definition(
+        &mut self,
+        file_path: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<oneshot::Receiver<ResponseToClientData>> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let params = TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri },
+            position: Position { line, character },
+        };
+
+        self.request("textDocument/definition", params)
+    }
+
     pub fn hover(
         &mut self,
         file_path: &str,

@@ -9,17 +9,18 @@ use std::{
 
 use crate::lsp::{
     data::{
-        DirName, FileContentData, FileData, FileName, FileSemanticTokensData, HoverData,
-        HoversData, TreeData,
+        DefinitionData, DefinitionsData, DirName, FileContentData, FileData, FileName,
+        FileSemanticTokensData, HoverData, HoversData, TreeData,
     },
     index::{FileIndex, PathIndex},
-    path::{HoverDataPath, TreeDataPath},
+    path::{DefinitionDataPath, HoverDataPath, TreeDataPath},
 };
 
 pub struct Builder {
     // datas: Vec<FileBuilder>,
     datas: Vec<TreeBuilder>,
     hovers: Vec<HoverBuilder>,
+    definitions: Vec<DefinitionBuilder>,
 }
 
 pub struct FileIndexBuilder {
@@ -43,6 +44,11 @@ pub struct TreeBuilder {
 pub struct HoverBuilder {
     file_index: FileIndex,
     hover_data: HoversData,
+}
+
+pub struct DefinitionBuilder {
+    file_index: FileIndex,
+    definitions_data: DefinitionsData,
 }
 
 impl FileDataBuilder {
@@ -83,6 +89,7 @@ impl Builder {
         }
         self.dump_tree_data(base_path)?;
         self.dump_hover_data(base_path)?;
+        self.dump_definition_data(base_path)?;
         Ok(())
     }
 }
@@ -98,6 +105,11 @@ impl Builder {
             .par_iter()
             .try_for_each(|hover_builder| hover_builder.dump(base_path))
     }
+    fn dump_definition_data(&self, base_path: &Path) -> Result<()> {
+        self.definitions
+            .par_iter()
+            .try_for_each(|definition_builder| definition_builder.dump(base_path))
+    }
 }
 
 impl HoverBuilder {
@@ -106,6 +118,14 @@ impl HoverBuilder {
         hover_data_path.dump(base_path, &self.hover_data)
     }
 }
+
+impl DefinitionBuilder {
+    fn dump(&self, base_path: &Path) -> Result<()> {
+        let definition_data_path = DefinitionDataPath::from(&self.file_index);
+        definition_data_path.dump(base_path, &self.definitions_data)
+    }
+}
+
 
 impl TreeBuilder {
     fn dump(&self, base_path: &Path) -> Result<()> {
@@ -143,6 +163,15 @@ impl From<(FileIndex, HoversData)> for HoverBuilder {
     }
 }
 
+impl From<(FileIndex, DefinitionsData)> for DefinitionBuilder {
+    fn from((file_index, definitions_data): (FileIndex, DefinitionsData)) -> Self {
+        Self {
+            file_index,
+            definitions_data,
+        }
+    }
+}
+
 impl From<(PathIndex, TreeData)> for TreeBuilder {
     fn from(value: (PathIndex, TreeData)) -> Self {
         Self {
@@ -155,7 +184,12 @@ impl From<(PathIndex, TreeData)> for TreeBuilder {
 impl
     TryFrom<(
         FileIndexDataBuilder,
-        Vec<(FileIndex, FileSemanticTokensData, HoversData)>,
+        Vec<(
+            FileIndex,
+            FileSemanticTokensData,
+            HoversData,
+            DefinitionsData,
+        )>,
     )> for Builder
 {
     type Error = anyhow::Error;
@@ -163,7 +197,12 @@ impl
     fn try_from(
         (file_index_data_builder, data_tokens): (
             FileIndexDataBuilder,
-            Vec<(FileIndex, FileSemanticTokensData, HoversData)>,
+            Vec<(
+                FileIndex,
+                FileSemanticTokensData,
+                HoversData,
+                DefinitionsData,
+            )>,
         ),
     ) -> Result<Self> {
         let file_builders = file_index_data_builder.file_builder;
@@ -225,21 +264,29 @@ impl
             ret
         })?;
 
-        let mut semantic_tokens_map: HashMap<FileIndex, (FileSemanticTokensData, HoversData)> =
-            data_tokens
-                .into_iter()
-                .map(|(file_index, semantic_tokens_data, hovers_data)| {
-                    (file_index, (semantic_tokens_data, hovers_data))
-                })
-                .collect();
+        let mut semantic_tokens_map: HashMap<
+            FileIndex,
+            (FileSemanticTokensData, HoversData, DefinitionsData),
+        > = data_tokens
+            .into_iter()
+            .map(
+                |(file_index, semantic_tokens_data, hovers_data, definitions_data)| {
+                    (
+                        file_index,
+                        (semantic_tokens_data, hovers_data, definitions_data),
+                    )
+                },
+            )
+            .collect();
         let mut path_file_set: HashMap<PathIndex, FileData> = HashMap::new();
         let mut path_hover_set: HashMap<FileIndex, HoversData> = HashMap::new();
+        let mut path_definition_set: HashMap<FileIndex, DefinitionsData> = HashMap::new();
         file_builders.into_iter().try_for_each(|file_builder| {
             let file_index = file_builder.file_index;
             let file_data = file_builder.file_data;
             let semantic_tokens = semantic_tokens_map.remove(&file_index);
-            let (semantic_tokens, hovers_data) =
-                semantic_tokens.map_or((None, None), |(a, b)| (Some(a), Some(b)));
+            let (semantic_tokens, hovers_data, definitions_data) =
+                semantic_tokens.map_or((None, None, None), |(a, b, c)| (Some(a), Some(b), Some(c)));
             let file_data = FileData::try_from((file_data, semantic_tokens))?;
             let path = file_index.path();
             let path_index = PathIndex::from(path.clone());
@@ -247,10 +294,18 @@ impl
                 .insert(path_index, file_data)
                 .map_or(Ok(()), |_| Err(anyhow!("{:?} is exist", path)))?;
             hovers_data.map_or(Ok(()), |d| {
-                path_hover_set.insert(file_index, d).map_or(Ok(()), |_| {
+                path_hover_set.insert(file_index.clone(), d).map_or(Ok(()), |_| {
                     Err(anyhow!("Hover data for {:?} is exist", path))
                 })
             })?;
+            definitions_data.map_or(Ok(()), |d| {
+                path_definition_set
+                    .insert(file_index, d)
+                    .map_or(Ok(()), |_| {
+                        Err(anyhow!("Definition data for {:?} is exist", path))
+                    })
+            })?;
+
             Ok::<(), anyhow::Error>(())
         })?;
         let path_file_set = path_file_set
@@ -275,9 +330,14 @@ impl
             .into_iter()
             .map(|(k, v)| HoverBuilder::from((k, v)))
             .collect::<Vec<_>>();
+        let definitions = path_definition_set
+            .into_iter()
+            .map(DefinitionBuilder::from)
+            .collect::<Vec<_>>();
         Ok(Self {
             datas: path_set,
             hovers,
+            definitions,
         })
     }
 }

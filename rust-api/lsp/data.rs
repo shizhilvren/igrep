@@ -56,6 +56,23 @@ pub struct HoversData {
     hovers: Vec<HoverData>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DefinitionsData {
+    definitions: Vec<DefinitionData>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DefinitionData {
+    range: lsp_types::Range,
+    locations: Vec<LocationData>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LocationData {
+    range: lsp_types::Range,
+    file_name: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SemanticToken {
     pub delta_line: u32,
@@ -63,6 +80,20 @@ pub struct SemanticToken {
     pub length: u32,
     pub token_type: u32,
     pub token_modifiers_bitset: u32,
+}
+
+impl DefinitionsData{
+    pub fn definitions(&self) -> &[DefinitionData] {
+        &self.definitions
+    }
+}
+impl DefinitionData {
+    pub fn range(&self) -> &lsp_types::Range {
+        &self.range
+    }
+    pub fn locations(&self) -> &[LocationData] {
+        &self.locations
+    }
 }
 
 impl FileSemanticTokensData {
@@ -277,10 +308,50 @@ impl TryFrom<&FileIndex> for FileContentData {
     }
 }
 
+impl TryFrom<lsp_types::Location> for LocationData {
+    type Error = anyhow::Error;
+
+    fn try_from(value: lsp_types::Location) -> std::result::Result<Self, Self::Error> {
+        let file_name = value
+            .uri
+            .as_str()
+            .strip_prefix("file://")
+            .ok_or(anyhow!(
+                "Invalid file URI: {:?}, expected to start with 'file://'",
+                value.uri
+            ))?
+            .to_string();
+        Ok(Self {
+            range: value.range,
+            file_name: file_name,
+        })
+    }
+}
+
+impl TryFrom<(lsp_types::Range, Vec<lsp_types::Location>)> for DefinitionData {
+    type Error = anyhow::Error;
+    fn try_from(
+        (range, value): (lsp_types::Range, Vec<lsp_types::Location>),
+    ) -> std::result::Result<Self, Self::Error> {
+        value
+            .into_iter()
+            .map(LocationData::try_from)
+            .collect::<Result<Vec<_>>>()
+            .map(|locations| Self { range, locations })
+    }
+}
+
+impl From<Vec<DefinitionData>> for DefinitionsData {
+    fn from(value: Vec<DefinitionData>) -> Self {
+        Self { definitions: value }
+    }
+}
+
 impl FromToData<'_> for FileData {}
 impl FromToData<'_> for TreeData {}
 impl FromToData<'_> for DirData {}
 impl FromToData<'_> for HoversData {}
+impl FromToData<'_> for DefinitionsData {}
 
 pub trait FromToData<'a> {
     fn to_data(&self) -> Result<Vec<u8>>
