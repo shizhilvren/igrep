@@ -46,7 +46,7 @@ pub struct Position {
 }
 
 #[wasm_bindgen]
-pub struct HoverRange {
+pub struct LocationRange {
     start: Position,
     end: Position,
 }
@@ -63,7 +63,7 @@ impl Position {
 }
 
 #[wasm_bindgen]
-impl HoverRange {
+impl LocationRange {
     pub fn start(&self) -> Position {
         self.start.clone()
     }
@@ -84,12 +84,66 @@ pub struct HoverData {
 }
 
 #[wasm_bindgen]
+pub struct DefinitionsData {
+    data: crate::lsp::data::DefinitionsData,
+}
+
+#[wasm_bindgen]
+pub struct LocationData {
+    data: crate::lsp::data::LocationData,
+}
+
+#[wasm_bindgen]
+pub struct DefinitionData {
+    data: crate::lsp::data::DefinitionData,
+}
+
+#[wasm_bindgen]
+impl DefinitionsData {
+    pub fn definitions(&self) -> Vec<DefinitionData> {
+        self.data
+            .definitions()
+            .iter()
+            .map(|d| DefinitionData::from(d))
+            .collect()
+    }
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: Vec<u8>) -> Self {
+        Self::try_from(&data).expect("data not correct")
+    }
+}
+
+#[wasm_bindgen]
+impl DefinitionData {
+    pub fn range(&self) -> LocationRange {
+        LocationRange::from(self.data.range())
+    }
+    pub fn locations(&self) -> Vec<LocationData> {
+        self.data
+            .locations()
+            .iter()
+            .map(|l| LocationData::from(l))
+            .collect()
+    }
+}
+
+#[wasm_bindgen]
+impl LocationData {
+    pub fn range(&self) -> LocationRange {
+        LocationRange::from(self.data.range())
+    }
+    pub fn file_name(&self) -> String {
+        self.data.file_name().to_string()
+    }
+}
+
+#[wasm_bindgen]
 impl HoversData {
     pub fn hovers(&self) -> Vec<HoverData> {
         self.data
             .hovers()
             .iter()
-            .map(|h| HoverData::from(h.clone()))
+            .map(|h| HoverData::from(h))
             .collect()
     }
     #[wasm_bindgen(constructor)]
@@ -100,8 +154,8 @@ impl HoversData {
 
 #[wasm_bindgen]
 impl HoverData {
-    pub fn range(&self) -> HoverRange {
-        HoverRange::from(self.data.range())
+    pub fn range(&self) -> LocationRange {
+        LocationRange::from(self.data.range())
     }
 
     pub fn hover(&self) -> String {
@@ -246,7 +300,7 @@ impl From<&lsp_types::Position> for Position {
     }
 }
 
-impl From<&lsp_types::Range> for HoverRange {
+impl From<&lsp_types::Range> for LocationRange {
     fn from(value: &lsp_types::Range) -> Self {
         Self {
             start: Position::from(&value.start),
@@ -263,9 +317,28 @@ impl TryFrom<&Vec<u8>> for HoversData {
     }
 }
 
-impl From<crate::lsp::data::HoverData> for HoverData {
-    fn from(data: crate::lsp::data::HoverData) -> Self {
-        Self { data }
+impl From<&crate::lsp::data::HoverData> for HoverData {
+    fn from(data: &crate::lsp::data::HoverData) -> Self {
+        Self { data: data.clone() }
+    }
+}
+
+impl TryFrom<&Vec<u8>> for DefinitionsData {
+    type Error = anyhow::Error;
+    fn try_from(value: &Vec<u8>) -> anyhow::Result<Self> {
+        let d = crate::lsp::data::DefinitionsData::from_data(value.as_slice())?;
+        Ok(Self { data: d })
+    }
+}
+impl From<&crate::lsp::data::DefinitionData> for DefinitionData {
+    fn from(data: &crate::lsp::data::DefinitionData) -> Self {
+        Self { data: data.clone() }
+    }
+}
+
+impl From<&crate::lsp::data::LocationData> for LocationData {
+    fn from(data: &crate::lsp::data::LocationData) -> Self {
+        Self { data: data.clone() }
     }
 }
 

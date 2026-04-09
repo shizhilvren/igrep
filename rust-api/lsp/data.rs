@@ -56,18 +56,18 @@ pub struct HoversData {
     hovers: Vec<HoverData>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DefinitionsData {
     definitions: Vec<DefinitionData>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DefinitionData {
     range: lsp_types::Range,
     locations: Vec<LocationData>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LocationData {
     range: lsp_types::Range,
     file_name: String,
@@ -82,7 +82,16 @@ pub struct SemanticToken {
     pub token_modifiers_bitset: u32,
 }
 
-impl DefinitionsData{
+impl LocationData {
+    pub fn range(&self) -> &lsp_types::Range {
+        &self.range
+    }
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+}
+
+impl DefinitionsData {
     pub fn definitions(&self) -> &[DefinitionData] {
         &self.definitions
     }

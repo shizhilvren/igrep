@@ -41,6 +41,30 @@ export class HoverDataModel {
         this.hover = hover
     }
 }
+
+export class DefinitionLocationModel {
+    readonly fileName: string
+    readonly start: HoverPosition
+    readonly end: HoverPosition
+
+    constructor(fileName: string, start: HoverPosition, end: HoverPosition) {
+        this.fileName = fileName
+        this.start = start
+        this.end = end
+    }
+}
+
+export class DefinitionDataModel {
+    readonly start: HoverPosition
+    readonly end: HoverPosition
+    readonly locations: DefinitionLocationModel[]
+
+    constructor(start: HoverPosition, end: HoverPosition, locations: DefinitionLocationModel[]) {
+        this.start = start
+        this.end = end
+        this.locations = locations
+    }
+}
 </script>
 
 <script setup lang="ts">
@@ -54,6 +78,7 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let hoverDispose: monaco.IDisposable | null = null
+let definitionDispose: monaco.IDisposable | null = null
 
 type SortedHoverItem = {
     startLine: number
@@ -63,14 +88,39 @@ type SortedHoverItem = {
     hover: string
 }
 
+type SortedRangeItem = {
+    startLine: number
+    startChar: number
+    endLine: number
+    endChar: number
+}
+
+type SortedDefinitionItem = {
+    startLine: number
+    startChar: number
+    endLine: number
+    endChar: number
+    locations: {
+        fileName: string
+        startLine: number
+        startChar: number
+        endLine: number
+        endChar: number
+    }[]
+}
+
 let sortedHoverItems: SortedHoverItem[] = []
 let sortedHoverSource: HoverDataModel[] | undefined = undefined
+let sortedDefinitionItems: SortedDefinitionItem[] = []
+let sortedDefinitionSource: DefinitionDataModel[] | undefined = undefined
 
 const props = defineProps<{
     code: string[]
     language: string
     semanticTokens?: SemanticTokens
     hoverData?: HoverDataModel[]
+    definitionData?: DefinitionDataModel[]
+    filePath?: string[]
 }>()
 
 const tokenTypeClassMap = [
@@ -197,6 +247,34 @@ function buildSortedHoverItems(hovers: HoverDataModel[] | undefined): SortedHove
         })
 }
 
+function buildSortedDefinitionItems(definitions: DefinitionDataModel[] | undefined): SortedDefinitionItem[] {
+    if (!definitions || definitions.length === 0) {
+        return []
+    }
+
+    return definitions
+        .map((definition) => ({
+            startLine: definition.start.line + 1,
+            startChar: definition.start.character + 1,
+            endLine: definition.end.line + 1,
+            endChar: definition.end.character + 1,
+            locations: definition.locations.map((location) => ({
+                fileName: location.fileName,
+                startLine: location.start.line + 1,
+                startChar: location.start.character + 1,
+                endLine: location.end.line + 1,
+                endChar: location.end.character + 1,
+            })),
+        }))
+        .sort((a, b) => {
+            const startCmp = comparePosition(a.startLine, a.startChar, b.startLine, b.startChar)
+            if (startCmp !== 0) {
+                return startCmp
+            }
+            return comparePosition(a.endLine, a.endChar, b.endLine, b.endChar)
+        })
+}
+
 function ensureSortedHoverItems() {
     if (sortedHoverSource === props.hoverData) {
         return
@@ -205,7 +283,15 @@ function ensureSortedHoverItems() {
     sortedHoverItems = buildSortedHoverItems(props.hoverData)
 }
 
-function containsPosition(item: SortedHoverItem, position: monaco.Position): boolean {
+function ensureSortedDefinitionItems() {
+    if (sortedDefinitionSource === props.definitionData) {
+        return
+    }
+    sortedDefinitionSource = props.definitionData
+    sortedDefinitionItems = buildSortedDefinitionItems(props.definitionData)
+}
+
+function containsPosition(item: SortedRangeItem, position: monaco.Position): boolean {
     const startCmp = comparePosition(position.lineNumber, position.column, item.startLine, item.startChar)
     if (startCmp < 0) {
         return false
@@ -258,6 +344,58 @@ function findHoverByBinarySearch(position: monaco.Position): SortedHoverItem | u
     return undefined
 }
 
+function findDefinitionByBinarySearch(position: monaco.Position): SortedDefinitionItem | undefined {
+    if (sortedDefinitionItems.length === 0) {
+        return undefined
+    }
+
+    let left = 0
+    let right = sortedDefinitionItems.length - 1
+    let candidate = -1
+
+    while (left <= right) {
+        const mid = left + Math.floor((right - left) / 2)
+        const item = sortedDefinitionItems[mid]
+        if (!item) {
+            break
+        }
+        const cmp = comparePosition(item.startLine, item.startChar, position.lineNumber, position.column)
+
+        if (cmp <= 0) {
+            candidate = mid
+            left = mid + 1
+        } else {
+            right = mid - 1
+        }
+    }
+
+    if (candidate === -1) {
+        return undefined
+    }
+
+    const current = sortedDefinitionItems[candidate]
+    if (current && containsPosition(current, position)) {
+        return current
+    }
+
+    if (candidate > 0) {
+        const previous = sortedDefinitionItems[candidate - 1]
+        if (previous && containsPosition(previous, position)) {
+            return previous
+        }
+    }
+
+    return undefined
+}
+
+function locationPathToUri(path: string): monaco.Uri {
+    const normalized = path
+        .split('/')
+        .filter((segment) => segment.length > 0)
+        .join('/')
+    return monaco.Uri.parse(`file:///${normalized}`)
+}
+
 function updateHoverProvider() {
     ensureSortedHoverItems()
     hoverDispose?.dispose()
@@ -287,6 +425,29 @@ function updateHoverProvider() {
     })
 }
 
+function updateDefinitionProvider() {
+    ensureSortedDefinitionItems()
+    definitionDispose?.dispose()
+    definitionDispose = monaco.languages.registerDefinitionProvider(props.language, {
+        provideDefinition(_, position) {
+            const definition = findDefinitionByBinarySearch(position)
+            if (!definition || definition.locations.length === 0) {
+                return null
+            }
+
+            return definition.locations.map((location) => ({
+                uri: locationPathToUri(location.fileName),
+                range: new monaco.Range(
+                    location.startLine,
+                    location.startChar,
+                    location.endLine,
+                    location.endChar,
+                ),
+            }))
+        },
+    })
+}
+
 onMounted(async () => {
     loader.config({ monaco })
     await loader.init()
@@ -305,6 +466,7 @@ onMounted(async () => {
     })
 
     updateHoverProvider()
+    updateDefinitionProvider()
     updateSemanticHighlight()
 })
 
@@ -317,6 +479,7 @@ watch(
 
         model.setValue(props.code.join('\n'))
         monaco.editor.setModelLanguage(model, props.language)
+        updateDefinitionProvider()
         updateSemanticHighlight()
     },
     { deep: true },
@@ -334,6 +497,7 @@ watch(
     () => props.language,
     () => {
         updateHoverProvider()
+        updateDefinitionProvider()
     },
 )
 
@@ -345,9 +509,19 @@ watch(
     },
 )
 
+watch(
+    () => props.definitionData,
+    () => {
+        sortedDefinitionSource = undefined
+        updateDefinitionProvider()
+    },
+)
+
 onBeforeUnmount(() => {
     hoverDispose?.dispose()
     hoverDispose = null
+    definitionDispose?.dispose()
+    definitionDispose = null
     sizeDispose?.dispose()
     sizeDispose = null
     decorations?.clear()
