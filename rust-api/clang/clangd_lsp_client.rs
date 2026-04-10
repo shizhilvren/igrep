@@ -134,12 +134,16 @@ pub async fn handle_definition(
                 .token_types
                 .iter()
                 .map(|token_type| match token_type.as_str() {
-                    t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::NAMESPACE.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
                     _ => false,
                 })
                 .collect::<Vec<_>>();
@@ -237,30 +241,31 @@ pub async fn handle_hovers(
     tokens: &lsp_types::SemanticTokens,
     hover_progress_bar: Option<&ProgressBar>,
 ) -> Result<HoversData> {
-    let keyword_token_type_index = client
+    let need_hover_type = client
         .get_semantic_tokens_server()
-        .and_then(|legend| {
-            legend.token_types.iter().position(|token_type| {
-                token_type.as_str() == lsp_types::SemanticTokenType::KEYWORD.as_str()
-            })
+        .map(|legend| {
+            legend
+                .token_types
+                .iter()
+                .map(|token_type| match token_type.as_str() {
+                    // t if t == lsp_types::SemanticTokenType::NAMESPACE.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
+                    _ => false,
+                })
+                .collect::<Vec<_>>()
         })
-        .map(|index| index as u32);
-    let operator_token_type_index = client
-        .get_semantic_tokens_server()
-        .and_then(|legend| {
-            legend.token_types.iter().position(|token_type| {
-                token_type.as_str() == lsp_types::SemanticTokenType::OPERATOR.as_str()
-            })
-        })
-        .map(|index| index as u32);
-    let comment_token_type_index = client
-        .get_semantic_tokens_server()
-        .and_then(|legend| {
-            legend.token_types.iter().position(|token_type| {
-                token_type.as_str() == lsp_types::SemanticTokenType::COMMENT.as_str()
-            })
-        })
-        .map(|index| index as u32);
+        .map_or(
+            Err(anyhow!("lsp server not support semantic tokens")),
+            |f| Ok(f),
+        )?;
 
     let ans = tokens
         .data
@@ -278,9 +283,7 @@ pub async fn handle_hovers(
             Some((*row, *col, token.token_type))
         })
         .filter(|(row, col, token_type)| {
-            let should_hover = keyword_token_type_index != Some(*token_type)
-                && operator_token_type_index != Some(*token_type)
-                && comment_token_type_index != Some(*token_type);
+            let should_hover = need_hover_type.get(*token_type as usize) == Some(&true);
             if !should_hover {
                 trace!(
                     "跳过 keyword/operator/comment 的悬停请求: {}:{}:{}",
