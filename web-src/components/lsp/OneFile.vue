@@ -82,6 +82,7 @@ let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let hoverDispose: monaco.IDisposable | null = null
 let definitionDispose: monaco.IDisposable | null = null
+const createdModelUris = new Set<string>()
 
 const props = defineProps<{
     code: string[]
@@ -106,6 +107,44 @@ function updateDefinitionProvider() {
     definitionDispose = registerDefinitionProvider(props.language, props.definitionData)
 }
 
+function toModelUri(filePath: string[] | undefined): monaco.Uri {
+    const normalizedPath = (filePath ?? [])
+        .flatMap((part) => part.split('/'))
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .join('/')
+
+    if (normalizedPath.length === 0) {
+        return monaco.Uri.parse('inmemory://igrep/untitled')
+    }
+
+    return monaco.Uri.parse(`file:///${normalizedPath}`)
+}
+
+function ensureFileModel() {
+    if (!editor) {
+        return
+    }
+
+    const uri = toModelUri(props.filePath)
+    const modelText = props.code.join('\n')
+
+    let model = monaco.editor.getModel(uri)
+    if (!model) {
+        model = monaco.editor.createModel(modelText, props.language, uri)
+        createdModelUris.add(uri.toString())
+    } else {
+        if (model.getValue() !== modelText) {
+            model.setValue(modelText)
+        }
+        monaco.editor.setModelLanguage(model, props.language)
+    }
+
+    if (editor.getModel() !== model) {
+        editor.setModel(model)
+    }
+}
+
 onMounted(async () => {
     loader.config({ monaco })
     await loader.init()
@@ -115,7 +154,7 @@ onMounted(async () => {
     }
 
     editor = monaco.editor.create(el.value, {
-        value: props.code.join('\n'),
+        value: '',
         language: props.language,
         theme: 'vs',
         readOnly: true,
@@ -123,20 +162,23 @@ onMounted(async () => {
         wordWrap: 'off',
     })
 
+    const initialModel = editor.getModel()
+    ensureFileModel()
+    if (initialModel && initialModel !== editor.getModel()) {
+        initialModel.dispose()
+    }
+
     updateHoverProvider()
     updateDefinitionProvider()
     updateSemanticHighlight()
 })
 
 watch(
-    () => [props.code, props.language],
+    () => [props.code, props.language, props.filePath],
     () => {
         if (!editor) return
-        const model = editor.getModel()
-        if (!model) return
 
-        model.setValue(props.code.join('\n'))
-        monaco.editor.setModelLanguage(model, props.language)
+        ensureFileModel()
         updateDefinitionProvider()
         updateSemanticHighlight()
     },
@@ -182,6 +224,13 @@ onBeforeUnmount(() => {
     sizeDispose = null
     decorations?.clear()
     decorations = null
+
+    for (const uriStr of createdModelUris) {
+        const model = monaco.editor.getModel(monaco.Uri.parse(uriStr))
+        model?.dispose()
+    }
+    createdModelUris.clear()
+
     editor?.dispose()
     editor = null
 })

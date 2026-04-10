@@ -38,3 +38,14 @@ impl GetPath for PathIndex {
         TreeDataPath::from(&self.index).path(base_path)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_index() {
+        let path_index = PathIndex::new("/some/path.hh".to_string());
+        let path_str = path_index.path_str("lsp-index");
+        assert_eq!(path_str, "lsp-index/index/some/path.hh");
+    }
+}

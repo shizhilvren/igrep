@@ -1,5 +1,7 @@
 import * as monaco from 'monaco-editor'
 import { bisector } from 'd3-array'
+import { PathIndex, TreeData } from 'igrep'
+import { fetchFileData } from '@/utils/utils'
 
 type Position0 = {
     line: number
@@ -82,10 +84,10 @@ function toZeroBasedPosition(position: monaco.Position): Position0Based {
 
 function toMonacoRange(item: SortedRangeItem): monaco.Range {
     return new monaco.Range(
-        item.startLine,
-        item.startChar,
-        item.endLine,
-        item.endChar,
+        item.startLine + 1,
+        item.startChar + 1,
+        item.endLine + 1,
+        item.endChar + 1,
     )
 }
 
@@ -136,14 +138,57 @@ function locationPathToUri(path: string): monaco.Uri {
     return monaco.Uri.parse(`file:///${normalized}`)
 }
 
+async function ensureModelForLocation(filePath: string, language: string, token: monaco.CancellationToken): Promise<void> {
+    if (token.isCancellationRequested) {
+        return
+    }
+
+    const uri = locationPathToUri(filePath)
+    if (monaco.editor.getModel(uri)) {
+        return
+    }
+
+    let pathIndex = new PathIndex(filePath)
+    let a = pathIndex.path_str('lsp-index');
+    console.log('LSP index path for file', filePath, ':', a)
+    const data = await fetchFileData(a + '/tree.data');
+
+    if (!data || token.isCancellationRequested) {
+        return
+    }
+
+    const treeData = new TreeData(data)
+    if (!treeData.is_file()) {
+        return
+    }
+
+    const fileData = treeData.file_data()
+    if (!fileData) {
+        return
+    }
+
+    const modelText = fileData.lines().join('\n')
+
+    if (!monaco.editor.getModel(uri)) {
+        monaco.editor.createModel(modelText, language, uri)
+    }
+}
+
 export function registerDefinitionProvider(language: string, definitionData: DefinitionLike[] | undefined): monaco.IDisposable {
     const sortedItems = buildSortedDefinitionItems(definitionData)
 
     return monaco.languages.registerDefinitionProvider(language, {
-        provideDefinition(_, position) {
+        async provideDefinition(_, position, token) {
             const zeroBasedPosition = toZeroBasedPosition(position)
             const definition = findDefinitionByBinarySearch(sortedItems, zeroBasedPosition)
             if (!definition || definition.locations.length === 0) {
+                return null
+            }
+
+            const uniquePaths = [...new Set(definition.locations.map((location) => location.fileName))]
+            await Promise.all(uniquePaths.map((filePath) => ensureModelForLocation(filePath, language, token)))
+
+            if (token.isCancellationRequested) {
                 return null
             }
 

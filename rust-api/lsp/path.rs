@@ -71,8 +71,6 @@ impl DefinitionDataPath<'_> {
     }
 }
 
-
-
 impl<'a> From<&'a FileIndex> for DefinitionDataPath<'a> {
     fn from(file_index: &'a FileIndex) -> Self {
         Self {
@@ -100,7 +98,7 @@ impl<'a> From<&'a PathIndex> for TreeDataPath<'a> {
 impl GetPath for TreeDataPath<'_> {
     fn path(&self, base_path: &Path) -> PathBuf {
         let index_path = self.full_path.path();
-        let index_path = match index_path.is_absolute() {
+        let index_path = match index_path.starts_with("/") {
             true => index_path
                 .strip_prefix("/")
                 .expect("Failed to strip prefix"),
@@ -113,7 +111,7 @@ impl GetPath for TreeDataPath<'_> {
 impl GetPath for HoverDataPath<'_> {
     fn path(&self, base_path: &Path) -> PathBuf {
         let index_path = self.full_path.path();
-        let index_path = match index_path.is_absolute() {
+        let index_path = match index_path.starts_with("/") {
             true => index_path
                 .strip_prefix("/")
                 .expect("Failed to strip prefix"),
@@ -126,7 +124,7 @@ impl GetPath for HoverDataPath<'_> {
 impl GetPath for DefinitionDataPath<'_> {
     fn path(&self, base_path: &Path) -> PathBuf {
         let index_path = self.full_path.path();
-        let index_path = match index_path.is_absolute() {
+        let index_path = match index_path.starts_with("/") {
             true => index_path
                 .strip_prefix("/")
                 .expect("Failed to strip prefix"),
