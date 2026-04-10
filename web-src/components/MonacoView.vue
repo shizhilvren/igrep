@@ -40,6 +40,9 @@ function highlightText(ranges: OneLineRange[]) {
         return
     }
     decorations.set(next)
+    // editor.setSelection(new monaco.Range(2, 1, 2, 10))
+    editor.setSelection("a".toString() as any)
+    editor.focus()
 }
 
 

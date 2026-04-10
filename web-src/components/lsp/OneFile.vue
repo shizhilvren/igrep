@@ -82,6 +82,7 @@ let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let hoverDispose: monaco.IDisposable | null = null
 let definitionDispose: monaco.IDisposable | null = null
+let openerDispose: monaco.IDisposable | null = null
 const createdModelUris = new Set<string>()
 
 const props = defineProps<{
@@ -105,6 +106,62 @@ function updateHoverProvider() {
 function updateDefinitionProvider() {
     definitionDispose?.dispose()
     definitionDispose = registerDefinitionProvider(props.language, props.definitionData)
+}
+
+function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
+    if (!selectionOrPosition) {
+        return undefined
+    }
+
+    const maybeRange = selectionOrPosition as monaco.IRange
+    if (
+        typeof maybeRange.startLineNumber === 'number'
+        && typeof maybeRange.startColumn === 'number'
+        && typeof maybeRange.endLineNumber === 'number'
+        && typeof maybeRange.endColumn === 'number'
+    ) {
+        return new monaco.Range(
+            maybeRange.startLineNumber,
+            maybeRange.startColumn,
+            maybeRange.endLineNumber,
+            maybeRange.endColumn,
+        )
+    }
+
+    const maybePosition = selectionOrPosition as monaco.IPosition
+    if (typeof maybePosition.lineNumber === 'number' && typeof maybePosition.column === 'number') {
+        return new monaco.Range(
+            maybePosition.lineNumber,
+            maybePosition.column,
+            maybePosition.lineNumber,
+            maybePosition.column,
+        )
+    }
+
+    return undefined
+}
+
+function expandCollapsedRangeToWord(model: monaco.editor.ITextModel, range: monaco.Range): monaco.Range {
+    if (!range.isEmpty()) {
+        return range
+    }
+
+    const word = model.getWordAtPosition({
+        lineNumber: range.startLineNumber,
+        column: range.startColumn,
+    })
+    console.log(word, range)
+
+    if (!word) {
+        return range
+    }
+
+    return new monaco.Range(
+        range.startLineNumber,
+        word.startColumn,
+        range.startLineNumber,
+        word.endColumn,
+    )
 }
 
 function toModelUri(filePath: string[] | undefined): monaco.Uri {
@@ -160,6 +217,33 @@ onMounted(async () => {
         readOnly: true,
         automaticLayout: true,
         wordWrap: 'off',
+    })
+
+    openerDispose = monaco.editor.registerEditorOpener({
+        async openCodeEditor(_, resource, selectionOrPosition) {
+            if (!editor) {
+                return false
+            }
+
+            const model = monaco.editor.getModel(resource)
+            if (!model) {
+                return false
+            }
+
+            editor.setModel(model)
+            createdModelUris.add(resource.toString())
+
+            const targetRange = toEditorTargetRange(selectionOrPosition)
+            if (targetRange) {
+                const highlightRange = expandCollapsedRangeToWord(model, targetRange)
+                console.log('Highlight range:', highlightRange)
+                editor.setSelection(highlightRange)
+                editor.revealRangeInCenter(highlightRange)
+            }
+
+            editor.focus()
+            return true
+        },
     })
 
     const initialModel = editor.getModel()
@@ -220,6 +304,8 @@ onBeforeUnmount(() => {
     hoverDispose = null
     definitionDispose?.dispose()
     definitionDispose = null
+    openerDispose?.dispose()
+    openerDispose = null
     sizeDispose?.dispose()
     sizeDispose = null
     decorations?.clear()
