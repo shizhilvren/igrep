@@ -17,6 +17,8 @@ import { applySemanticHighlight } from '@/components/lsp/semanticHighlighter'
 import { FileContent, SemanticTokens, HoverData, DefinitionData, Files } from '@/components/lsp/file'
 
 const el = ref<HTMLElement | null>(null)
+const addModelPromise = ref<Map<string, Promise<void>>>(new Map())
+
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
 let sizeDispose: monaco.IDisposable | null = null
@@ -26,10 +28,17 @@ let definitionDispose: monaco.IDisposable | null = null
 let openerDispose: monaco.IDisposable | null = null
 const createdModelUris = new Set<string>()
 
+const emit = defineEmits<{
+    'addFileToModel': [file_path: string]
+}>()
+
+
 const props = defineProps<{
     filePath: string[]
     files: Files
 }>()
+
+
 
 const file_uri = computed(() => {
     return toModelUri(props.filePath)
@@ -45,12 +54,47 @@ const code = computed(() => {
 })
 
 
+
 const hovers = computed(() => {
     return new Map([...props.files.files.entries()].map(([name, file]) => {
         return ["file://" + name, file.hoverData]
     }))
-
 })
+
+const defitition = computed(() => {
+    return new Map([...props.files.files.entries()].map(([name, file]) => {
+        return ["file://" + name, file.definitionData]
+    }))
+})
+
+function addFileToModel(file_path: string) {
+    const file_path_array = file_path.split('/').filter((e) => { return e != "" })
+    const have_file = !!props.files.getFileContent(file_path_array);
+    if (have_file) {
+        return null
+    } else {
+        const wait = new Promise<void>((resolve, rejects) => {
+            const stop = watch(
+                () => props.files.getFileContent(file_path_array),
+                (_, new_model) => {
+                    const uri = monaco.Uri.parse("file://" + file_path)
+                    const modelText = new_model?.code.join('\n')
+                    if (!monaco.editor.getModel(uri) && modelText) {
+                        monaco.editor.createModel(modelText, "cpp", uri)
+                        stop()
+                        resolve()
+                    }
+                },
+                { deep: true },
+
+            )
+        })
+        emit("addFileToModel", file_path)
+        return wait
+    }
+
+}
+
 
 function updateSemanticHighlight(semantic_tokens: SemanticTokens | undefined) {
     decorations = applySemanticHighlight(editor, semantic_tokens, decorations)
@@ -61,10 +105,10 @@ function updateHoverProvider() {
     hoverDispose = registerHoverProvider("cpp", hovers)
 }
 
-// function updateDefinitionProvider() {
-//     definitionDispose?.dispose()
-//     definitionDispose = registerDefinitionProvider(props.language, props.definitionData)
-// }
+function updateDefinitionProvider() {
+    definitionDispose?.dispose()
+    definitionDispose = registerDefinitionProvider("cpp", defitition, addFileToModel)
+}
 
 // function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
 //     if (!selectionOrPosition) {
@@ -214,8 +258,8 @@ onMounted(async () => {
     }
 
     updateHoverProvider()
-    // updateDefinitionProvider()
     updateSemanticHighlight(semantic.value)
+    updateDefinitionProvider()
 })
 
 
@@ -263,7 +307,6 @@ watch(
     },
     { deep: true },
 )
-
 
 onBeforeUnmount(() => {
     hoverDispose?.dispose()

@@ -2,6 +2,8 @@ import * as monaco from 'monaco-editor'
 import { bisector } from 'd3-array'
 import { PathIndex, TreeData } from 'igrep'
 import { fetchFileData } from '@/utils/utils'
+import { nextTick, type ComputedRef } from 'vue'
+import type { DefinitionData, DefinitionLocationModel } from './file'
 
 type Position0 = {
     line: number
@@ -82,12 +84,12 @@ function toZeroBasedPosition(position: monaco.Position): Position0Based {
     }
 }
 
-function toMonacoRange(item: SortedRangeItem): monaco.Range {
+function toMonacoRange(item: DefinitionLocationModel): monaco.Range {
     return new monaco.Range(
-        item.startLine + 1,
-        item.startChar + 1,
-        item.endLine + 1,
-        item.endChar + 1,
+        item.start.line + 1,
+        item.start.character + 1,
+        item.end.line + 1,
+        item.end.character + 1,
     )
 }
 
@@ -174,25 +176,33 @@ async function ensureModelForLocation(filePath: string, language: string, token:
     }
 }
 
-export function registerDefinitionProvider(language: string, definitionData: DefinitionLike[] | undefined): monaco.IDisposable {
-    const sortedItems = buildSortedDefinitionItems(definitionData)
+export function registerDefinitionProvider(language: string, definitionData: ComputedRef<Map<string, DefinitionData[] | undefined>>, addFileToModel: (path_name: string) => Promise<void> | null): monaco.IDisposable {
 
     return monaco.languages.registerDefinitionProvider(language, {
-        async provideDefinition(_, position, token) {
-            const zeroBasedPosition = toZeroBasedPosition(position)
-            const definition = findDefinitionByBinarySearch(sortedItems, zeroBasedPosition)
-            if (!definition || definition.locations.length === 0) {
-                return null
-            }
+        async provideDefinition(model, position, token) {
+            const uri = model.uri
+            const definitions = definitionData.value.get(uri.toString())
+            const line = position.lineNumber - 1
+            const char = position.column - 1
+            const definition = definitions?.find((e) => {
+                if (e.start.line == line && e.start.character <= char && char < e.end.character) {
+                    return true
+                } else {
+                    return false
+                }
+            });
 
-            const uniquePaths = [...new Set(definition.locations.map((location) => location.fileName))]
-            await Promise.all(uniquePaths.map((filePath) => ensureModelForLocation(filePath, language, token)))
+            const uniquePaths = [...new Set(definition?.locations.map((location) => location.fileName))].map((file_path) => {
+                return addFileToModel(file_path)
+            }).filter((e) => !!e)
+            await Promise.all(uniquePaths)
+
 
             if (token.isCancellationRequested) {
                 return null
             }
 
-            return definition.locations.map((location) => ({
+            return definition?.locations.map((location) => ({
                 uri: locationPathToUri(location.fileName),
                 range: toMonacoRange(location),
             }))
