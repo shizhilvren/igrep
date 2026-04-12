@@ -1,5 +1,5 @@
 import * as monaco from 'monaco-editor'
-import type { SemanticTokens } from '@/components/lsp/OneFile.vue'
+import {SemanticTokens} from '@/components/lsp/file'
 
 const tokenTypeClassMap = [
     'st-file',

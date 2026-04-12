@@ -4,76 +4,17 @@
 
 
 <script lang="ts">
-export class SemanticToken {
-    readonly delta_line: number
-    readonly delta_start: number
-    readonly length: number
-    readonly token_type: number
-    readonly token_modifiers_bitset: number
-    constructor(delta_line: number, delta_start: number, length: number, token_type: number, token_modifiers_bitset: number) {
-        this.delta_line = delta_line
-        this.delta_start = delta_start
-        this.length = length
-        this.token_type = token_type
-        this.token_modifiers_bitset = token_modifiers_bitset
-    }
-}
-export class SemanticTokens {
-    readonly data: SemanticToken[]
-    constructor(data: SemanticToken[]) {
-        this.data = data
-    }
-}
 
-export type HoverPosition = {
-    line: number
-    character: number
-}
-
-export class HoverDataModel {
-    readonly start: HoverPosition
-    readonly end: HoverPosition
-    readonly hover: string
-
-    constructor(start: HoverPosition, end: HoverPosition, hover: string) {
-        this.start = start
-        this.end = end
-        this.hover = hover
-    }
-}
-
-export class DefinitionLocationModel {
-    readonly fileName: string
-    readonly start: HoverPosition
-    readonly end: HoverPosition
-
-    constructor(fileName: string, start: HoverPosition, end: HoverPosition) {
-        this.fileName = fileName
-        this.start = start
-        this.end = end
-    }
-}
-
-export class DefinitionDataModel {
-    readonly start: HoverPosition
-    readonly end: HoverPosition
-    readonly locations: DefinitionLocationModel[]
-
-    constructor(start: HoverPosition, end: HoverPosition, locations: DefinitionLocationModel[]) {
-        this.start = start
-        this.end = end
-        this.locations = locations
-    }
-}
 </script>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import loader from '@monaco-editor/loader'
 import * as monaco from 'monaco-editor'
 import { registerHoverProvider } from '@/components/lsp/hoverProvider'
 import { registerDefinitionProvider } from '@/components/lsp/definitionProvider'
 import { applySemanticHighlight } from '@/components/lsp/semanticHighlighter'
+import { FileContent, SemanticTokens, HoverData, DefinitionData, Files } from '@/components/lsp/file'
 
 const el = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -86,83 +27,100 @@ let openerDispose: monaco.IDisposable | null = null
 const createdModelUris = new Set<string>()
 
 const props = defineProps<{
-    code: string[]
-    language: string
-    semanticTokens?: SemanticTokens
-    hoverData?: HoverDataModel[]
-    definitionData?: DefinitionDataModel[]
-    filePath?: string[]
+    filePath: string[]
+    files: Files
 }>()
 
-function updateSemanticHighlight() {
-    decorations = applySemanticHighlight(editor, props.semanticTokens, decorations)
+const file_uri = computed(() => {
+    return toModelUri(props.filePath)
+})
+
+const semantic = computed(() => {
+    return props.files.getFileContent(props.filePath)?.semanticTokens
+})
+
+const code = computed(() => {
+    const file = props.files.getFileContent(props.filePath)
+    return { "code": file?.code, "language": file?.language, "uri": file_uri }
+})
+
+
+const hovers = computed(() => {
+    return new Map([...props.files.files.entries()].map(([name, file]) => {
+        return ["file://" + name, file.hoverData]
+    }))
+
+})
+
+function updateSemanticHighlight(semantic_tokens: SemanticTokens | undefined) {
+    decorations = applySemanticHighlight(editor, semantic_tokens, decorations)
 }
 
 function updateHoverProvider() {
     hoverDispose?.dispose()
-    hoverDispose = registerHoverProvider(props.language, props.hoverData)
+    hoverDispose = registerHoverProvider("cpp", hovers)
 }
 
-function updateDefinitionProvider() {
-    definitionDispose?.dispose()
-    definitionDispose = registerDefinitionProvider(props.language, props.definitionData)
-}
+// function updateDefinitionProvider() {
+//     definitionDispose?.dispose()
+//     definitionDispose = registerDefinitionProvider(props.language, props.definitionData)
+// }
 
-function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
-    if (!selectionOrPosition) {
-        return undefined
-    }
+// function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
+//     if (!selectionOrPosition) {
+//         return undefined
+//     }
 
-    const maybeRange = selectionOrPosition as monaco.IRange
-    if (
-        typeof maybeRange.startLineNumber === 'number'
-        && typeof maybeRange.startColumn === 'number'
-        && typeof maybeRange.endLineNumber === 'number'
-        && typeof maybeRange.endColumn === 'number'
-    ) {
-        return new monaco.Range(
-            maybeRange.startLineNumber,
-            maybeRange.startColumn,
-            maybeRange.endLineNumber,
-            maybeRange.endColumn,
-        )
-    }
+//     const maybeRange = selectionOrPosition as monaco.IRange
+//     if (
+//         typeof maybeRange.startLineNumber === 'number'
+//         && typeof maybeRange.startColumn === 'number'
+//         && typeof maybeRange.endLineNumber === 'number'
+//         && typeof maybeRange.endColumn === 'number'
+//     ) {
+//         return new monaco.Range(
+//             maybeRange.startLineNumber,
+//             maybeRange.startColumn,
+//             maybeRange.endLineNumber,
+//             maybeRange.endColumn,
+//         )
+//     }
 
-    const maybePosition = selectionOrPosition as monaco.IPosition
-    if (typeof maybePosition.lineNumber === 'number' && typeof maybePosition.column === 'number') {
-        return new monaco.Range(
-            maybePosition.lineNumber,
-            maybePosition.column,
-            maybePosition.lineNumber,
-            maybePosition.column,
-        )
-    }
+//     const maybePosition = selectionOrPosition as monaco.IPosition
+//     if (typeof maybePosition.lineNumber === 'number' && typeof maybePosition.column === 'number') {
+//         return new monaco.Range(
+//             maybePosition.lineNumber,
+//             maybePosition.column,
+//             maybePosition.lineNumber,
+//             maybePosition.column,
+//         )
+//     }
 
-    return undefined
-}
+//     return undefined
+// }
 
-function expandCollapsedRangeToWord(model: monaco.editor.ITextModel, range: monaco.Range): monaco.Range {
-    if (!range.isEmpty()) {
-        return range
-    }
+// function expandCollapsedRangeToWord(model: monaco.editor.ITextModel, range: monaco.Range): monaco.Range {
+//     if (!range.isEmpty()) {
+//         return range
+//     }
 
-    const word = model.getWordAtPosition({
-        lineNumber: range.startLineNumber,
-        column: range.startColumn,
-    })
-    console.log(word, range)
+//     const word = model.getWordAtPosition({
+//         lineNumber: range.startLineNumber,
+//         column: range.startColumn,
+//     })
+//     console.log(word, range)
 
-    if (!word) {
-        return range
-    }
+//     if (!word) {
+//         return range
+//     }
 
-    return new monaco.Range(
-        range.startLineNumber,
-        word.startColumn,
-        range.startLineNumber,
-        word.endColumn,
-    )
-}
+//     return new monaco.Range(
+//         range.startLineNumber,
+//         word.startColumn,
+//         range.startLineNumber,
+//         word.endColumn,
+//     )
+// }
 
 function toModelUri(filePath: string[] | undefined): monaco.Uri {
     const normalizedPath = (filePath ?? [])
@@ -178,23 +136,23 @@ function toModelUri(filePath: string[] | undefined): monaco.Uri {
     return monaco.Uri.parse(`file:///${normalizedPath}`)
 }
 
-function ensureFileModel() {
+function ensureFileModel(code: string[], language: string, file_uri: monaco.Uri) {
+
     if (!editor) {
         return
     }
 
-    const uri = toModelUri(props.filePath)
-    const modelText = props.code.join('\n')
+    const modelText = code.join('\n')
 
-    let model = monaco.editor.getModel(uri)
+    let model = monaco.editor.getModel(file_uri)
     if (!model) {
-        model = monaco.editor.createModel(modelText, props.language, uri)
-        createdModelUris.add(uri.toString())
+        model = monaco.editor.createModel(modelText, language, file_uri)
+        createdModelUris.add(file_uri.toString())
     } else {
         if (model.getValue() !== modelText) {
             model.setValue(modelText)
         }
-        monaco.editor.setModelLanguage(model, props.language)
+        monaco.editor.setModelLanguage(model, language)
     }
 
     if (editor.getModel() !== model) {
@@ -203,6 +161,7 @@ function ensureFileModel() {
 }
 
 onMounted(async () => {
+    console.log("OneFile onMunted")
     loader.config({ monaco })
     await loader.init()
 
@@ -212,92 +171,99 @@ onMounted(async () => {
 
     editor = monaco.editor.create(el.value, {
         value: '',
-        language: props.language,
+        // language: props.language,
         theme: 'vs',
         readOnly: true,
         automaticLayout: true,
         wordWrap: 'off',
     })
 
-    openerDispose = monaco.editor.registerEditorOpener({
-        async openCodeEditor(_, resource, selectionOrPosition) {
-            if (!editor) {
-                return false
-            }
+    // openerDispose = monaco.editor.registerEditorOpener({
+    //     async openCodeEditor(_, resource, selectionOrPosition) {
+    //         if (!editor) {
+    //             return false
+    //         }
 
-            const model = monaco.editor.getModel(resource)
-            if (!model) {
-                return false
-            }
+    //         const model = monaco.editor.getModel(resource)
+    //         if (!model) {
+    //             return false
+    //         }
 
-            editor.setModel(model)
-            createdModelUris.add(resource.toString())
+    //         editor.setModel(model)
+    //         createdModelUris.add(resource.toString())
 
-            const targetRange = toEditorTargetRange(selectionOrPosition)
-            if (targetRange) {
-                const highlightRange = expandCollapsedRangeToWord(model, targetRange)
-                console.log('Highlight range:', highlightRange)
-                editor.setSelection(highlightRange)
-                editor.revealRangeInCenter(highlightRange)
-            }
+    //         const targetRange = toEditorTargetRange(selectionOrPosition)
+    //         if (targetRange) {
+    //             const highlightRange = expandCollapsedRangeToWord(model, targetRange)
+    //             console.log('Highlight range:', highlightRange)
+    //             editor.setSelection(highlightRange)
+    //             editor.revealRangeInCenter(highlightRange)
+    //         }
 
-            editor.focus()
-            return true
-        },
-    })
+    //         editor.focus()
+    //         return true
+    //     },
+    // })
 
     const initialModel = editor.getModel()
-    ensureFileModel()
+    if (code.value.code && code.value.language) {
+        ensureFileModel(code.value.code, code.value.language, code.value.uri.value)
+    }
     if (initialModel && initialModel !== editor.getModel()) {
         initialModel.dispose()
     }
 
     updateHoverProvider()
-    updateDefinitionProvider()
-    updateSemanticHighlight()
+    // updateDefinitionProvider()
+    updateSemanticHighlight(semantic.value)
 })
 
-watch(
-    () => [props.code, props.language, props.filePath],
-    () => {
-        if (!editor) return
 
-        ensureFileModel()
-        updateDefinitionProvider()
-        updateSemanticHighlight()
+
+
+// watch(
+//     () => props.language,
+//     () => {
+//         updateHoverProvider()
+//         updateDefinitionProvider()
+//     },
+// )
+
+// watch(
+//     () => props.hoverData,
+//     () => {
+//         updateHoverProvider()
+//     },
+// )
+
+// watch(
+//     () => props.definitionData,
+//     () => {
+//         updateDefinitionProvider()
+//     },
+// )
+
+watch(
+    () => semantic.value,
+    (_, new_semantic_tokens) => {
+        updateSemanticHighlight(new_semantic_tokens)
     },
     { deep: true },
 )
 
 watch(
-    () => props.semanticTokens,
-    () => {
-        updateSemanticHighlight()
+    () => code,
+    (_, new_val) => {
+        if (!editor || !new_val.value.code || !new_val.value.language) {
+            return
+        }
+        ensureFileModel(new_val.value.code, new_val.value.language, new_val.value.uri.value)
+        // updateDefinitionProvider()
+        // updateSemanticHighlight()
     },
     { deep: true },
 )
 
-watch(
-    () => props.language,
-    () => {
-        updateHoverProvider()
-        updateDefinitionProvider()
-    },
-)
-
-watch(
-    () => props.hoverData,
-    () => {
-        updateHoverProvider()
-    },
-)
-
-watch(
-    () => props.definitionData,
-    () => {
-        updateDefinitionProvider()
-    },
-)
 
 onBeforeUnmount(() => {
     hoverDispose?.dispose()

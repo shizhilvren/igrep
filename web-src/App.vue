@@ -20,7 +20,7 @@ import HelloWorld from './components/HelloWorld.vue'
   <p><strong>Current route path:</strong> {{ $route.fullPath }}</p>
   <nav>
     <RouterLink to="/search">Go to search</RouterLink>
-    <!-- <RouterLink to="/index">Go to Index</RouterLink> -->
+    <RouterLink to="/files">Go to files</RouterLink>
   </nav>
   <main class="app-main">
     <RouterView />
