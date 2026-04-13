@@ -10,10 +10,10 @@ use std::{
 use crate::lsp::{
     data::{
         DefinitionData, DefinitionsData, DirName, FileContentData, FileData, FileName,
-        FileSemanticTokensData, HoverData, HoversData, TreeData,
+        FileSemanticTokensData, HoverData, HoversData, ReferencesData, TreeData,
     },
     index::{FileIndex, PathIndex},
-    path::{DefinitionDataPath, HoverDataPath, TreeDataPath},
+    path::{DefinitionDataPath, HoverDataPath, ReferenceDataPath, TreeDataPath},
 };
 
 pub struct Builder {
@@ -21,6 +21,7 @@ pub struct Builder {
     datas: Vec<TreeBuilder>,
     hovers: Vec<HoverBuilder>,
     definitions: Vec<DefinitionBuilder>,
+    references: Vec<ReferencesBuilder>,
 }
 
 pub struct FileIndexBuilder {
@@ -49,6 +50,11 @@ pub struct HoverBuilder {
 pub struct DefinitionBuilder {
     file_index: FileIndex,
     definitions_data: DefinitionsData,
+}
+
+pub struct ReferencesBuilder {
+    file_index: FileIndex,
+    references_data: ReferencesData,
 }
 
 impl FileDataBuilder {
@@ -90,6 +96,7 @@ impl Builder {
         self.dump_tree_data(base_path)?;
         self.dump_hover_data(base_path)?;
         self.dump_definition_data(base_path)?;
+        self.dump_references_data(base_path)?;
         Ok(())
     }
 }
@@ -110,6 +117,11 @@ impl Builder {
             .par_iter()
             .try_for_each(|definition_builder| definition_builder.dump(base_path))
     }
+    fn dump_references_data(&self, base_path: &Path) -> Result<()> {
+        self.references
+            .par_iter()
+            .try_for_each(|references_builder| references_builder.dump(base_path))
+    }
 }
 
 impl HoverBuilder {
@@ -123,6 +135,13 @@ impl DefinitionBuilder {
     fn dump(&self, base_path: &Path) -> Result<()> {
         let definition_data_path = DefinitionDataPath::from(&self.file_index);
         definition_data_path.dump(base_path, &self.definitions_data)
+    }
+}
+
+impl ReferencesBuilder {
+    fn dump(&self, base_path: &Path) -> Result<()> {
+        let reference_data_path = ReferenceDataPath::from(&self.file_index);
+        reference_data_path.dump(base_path, &self.references_data)
     }
 }
 
@@ -172,6 +191,15 @@ impl From<(FileIndex, DefinitionsData)> for DefinitionBuilder {
     }
 }
 
+impl From<(FileIndex, ReferencesData)> for ReferencesBuilder {
+    fn from((file_index, references_data): (FileIndex, ReferencesData)) -> Self {
+        Self {
+            file_index,
+            references_data,
+        }
+    }
+}
+
 impl From<(PathIndex, TreeData)> for TreeBuilder {
     fn from(value: (PathIndex, TreeData)) -> Self {
         Self {
@@ -189,6 +217,7 @@ impl
             FileSemanticTokensData,
             HoversData,
             DefinitionsData,
+            ReferencesData,
         )>,
     )> for Builder
 {
@@ -202,6 +231,7 @@ impl
                 FileSemanticTokensData,
                 HoversData,
                 DefinitionsData,
+                ReferencesData,
             )>,
         ),
     ) -> Result<Self> {
@@ -266,14 +296,30 @@ impl
 
         let mut semantic_tokens_map: HashMap<
             FileIndex,
-            (FileSemanticTokensData, HoversData, DefinitionsData),
+            (
+                FileSemanticTokensData,
+                HoversData,
+                DefinitionsData,
+                ReferencesData,
+            ),
         > = data_tokens
             .into_iter()
             .map(
-                |(file_index, semantic_tokens_data, hovers_data, definitions_data)| {
+                |(
+                    file_index,
+                    semantic_tokens_data,
+                    hovers_data,
+                    definitions_data,
+                    references_data,
+                )| {
                     (
                         file_index,
-                        (semantic_tokens_data, hovers_data, definitions_data),
+                        (
+                            semantic_tokens_data,
+                            hovers_data,
+                            definitions_data,
+                            references_data,
+                        ),
                     )
                 },
             )
@@ -281,12 +327,15 @@ impl
         let mut path_file_set: HashMap<PathIndex, FileData> = HashMap::new();
         let mut path_hover_set: HashMap<FileIndex, HoversData> = HashMap::new();
         let mut path_definition_set: HashMap<FileIndex, DefinitionsData> = HashMap::new();
+        let mut path_references_set: HashMap<FileIndex, ReferencesData> = HashMap::new();
         file_builders.into_iter().try_for_each(|file_builder| {
             let file_index = file_builder.file_index;
             let file_data = file_builder.file_data;
             let semantic_tokens = semantic_tokens_map.remove(&file_index);
-            let (semantic_tokens, hovers_data, definitions_data) =
-                semantic_tokens.map_or((None, None, None), |(a, b, c)| (Some(a), Some(b), Some(c)));
+            let (semantic_tokens, hovers_data, definitions_data, references_data) = semantic_tokens
+                .map_or((None, None, None, None), |(a, b, c, d)| {
+                    (Some(a), Some(b), Some(c), Some(d))
+                });
             let file_data = FileData::try_from((file_data, semantic_tokens))?;
             let path = file_index.path();
             let path_index = PathIndex::from(path.clone());
@@ -300,9 +349,16 @@ impl
             })?;
             definitions_data.map_or(Ok(()), |d| {
                 path_definition_set
-                    .insert(file_index, d)
+                    .insert(file_index.clone(), d)
                     .map_or(Ok(()), |_| {
                         Err(anyhow!("Definition data for {:?} is exist", path))
+                    })
+            })?;
+            references_data.map_or(Ok(()), |d| {
+                path_references_set
+                    .insert(file_index, d)
+                    .map_or(Ok(()), |_| {
+                        Err(anyhow!("References data for {:?} is exist", path))
                     })
             })?;
 
@@ -334,10 +390,15 @@ impl
             .into_iter()
             .map(DefinitionBuilder::from)
             .collect::<Vec<_>>();
+        let references = path_references_set
+            .into_iter()
+            .map(ReferencesBuilder::from)
+            .collect::<Vec<_>>();
         Ok(Self {
             datas: path_set,
             hovers,
             definitions,
+            references,
         })
     }
 }

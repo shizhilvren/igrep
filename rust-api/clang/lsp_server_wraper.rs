@@ -5,9 +5,7 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 
 use lsp_types::{
-    ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
-    Position, TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri,
+    ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, PartialResultParams, Position, ReferenceParams, TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri, WorkDoneProgressParams
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -315,12 +313,46 @@ impl Client {
         character: u32,
     ) -> Result<oneshot::Receiver<ResponseToClientData>> {
         let uri = Uri::from_str(&format!("file://{}", file_path))?;
-        let params = TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier { uri },
-            position: Position { line, character },
+        let params = lsp_types::GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position { line, character },
+            },
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+            partial_result_params: PartialResultParams {
+                partial_result_token: None,
+            },
         };
 
         self.request("textDocument/definition", params)
+    }
+
+    pub fn references(
+        &mut self,
+        file_path: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<oneshot::Receiver<ResponseToClientData>> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let params = ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position { line, character },
+            },
+            context: lsp_types::ReferenceContext {
+                include_declaration: true,
+            },
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+            partial_result_params: PartialResultParams {
+                partial_result_token: None,
+            },
+        };
+
+        self.request("textDocument/references", params)
     }
 
     pub fn hover(

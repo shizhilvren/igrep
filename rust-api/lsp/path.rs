@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::lsp::{
-    data::{DefinitionsData, FileData, HoversData, TreeData},
+    data::{DefinitionsData, FileData, HoversData, ReferencesData, TreeData},
     index::{FileIndex, PathIndex},
 };
 use anyhow::{Result, anyhow};
@@ -21,6 +21,10 @@ pub struct HoverDataPath<'a> {
 }
 
 pub struct DefinitionDataPath<'a> {
+    full_path: &'a FileIndex,
+}
+
+pub struct ReferenceDataPath<'a> {
     full_path: &'a FileIndex,
 }
 
@@ -71,7 +75,29 @@ impl DefinitionDataPath<'_> {
     }
 }
 
+impl ReferenceDataPath<'_> {
+    pub fn dump(&self, base_path: &Path, references_data: &ReferencesData) -> Result<()> {
+        let path = self.path(base_path);
+        std::fs::create_dir_all(&path)
+            .map_err(|e| anyhow!("fail to create dir {:?} {:?}", &path, e))?;
+        let file_path = path.join("references.data");
+        let mut file = std::fs::File::create(file_path.as_path())
+            .map_err(|e| anyhow!("create file {:?} fail. {:?}", self.full_path, e))?;
+        let data = references_data.to_data()?;
+        file.write_all(&data)?;
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a FileIndex> for DefinitionDataPath<'a> {
+    fn from(file_index: &'a FileIndex) -> Self {
+        Self {
+            full_path: file_index,
+        }
+    }
+}
+
+impl<'a> From<&'a FileIndex> for ReferenceDataPath<'a> {
     fn from(file_index: &'a FileIndex) -> Self {
         Self {
             full_path: file_index,
@@ -122,6 +148,19 @@ impl GetPath for HoverDataPath<'_> {
 }
 
 impl GetPath for DefinitionDataPath<'_> {
+    fn path(&self, base_path: &Path) -> PathBuf {
+        let index_path = self.full_path.path();
+        let index_path = match index_path.starts_with("/") {
+            true => index_path
+                .strip_prefix("/")
+                .expect("Failed to strip prefix"),
+            false => index_path.as_path(),
+        };
+        base_path.join("index").join(index_path)
+    }
+}
+
+impl GetPath for ReferenceDataPath<'_> {
     fn path(&self, base_path: &Path) -> PathBuf {
         let index_path = self.full_path.path();
         let index_path = match index_path.starts_with("/") {

@@ -10,7 +10,7 @@ use tokio::task::JoinSet;
 use crate::lsp::{
     self,
     builder::Builder,
-    data::{DefinitionData, DefinitionsData, HoversData},
+    data::{DefinitionData, DefinitionsData, HoversData, ReferencesData},
     index::FileIndex,
 };
 
@@ -235,6 +235,42 @@ pub async fn handle_definition(
     Ok(definitions)
 }
 
+pub async fn handle_references(
+    client: &mut crate::clang::lsp_server_wraper::Client,
+    file_path: &str,
+    definitions: &DefinitionsData,
+    hover_progress_bar: Option<&ProgressBar>,
+) -> Result<ReferencesData> {
+    if let Some(progress_bar) = hover_progress_bar {
+        let base_len = progress_bar.length().unwrap_or(0);
+        progress_bar.set_length(base_len + definitions.definitions().len() as u64);
+        progress_bar.set_message(format!("references {}", file_path));
+    }
+
+    let mut references = Vec::new();
+    for definition in definitions.definitions() {
+        let range = definition.range();
+        let references_response = client
+            .references(file_path, range.start.line, range.start.character)?
+            .await
+            .map_err(|e| anyhow!("references response recv fail: {}", e))?;
+
+        let references_data = DefinitionData::try_from((
+            range.clone(),
+            serde_json::from_value::<Vec<lsp_types::Location>>(references_response.val)?,
+        ))?;
+        if !references_data.locations().is_empty() {
+            references.push(references_data);
+        }
+    }
+
+    if let Some(progress_bar) = hover_progress_bar {
+        progress_bar.inc(1);
+    }
+
+    Ok(ReferencesData::from(references))
+}
+
 pub async fn handle_hovers(
     client: &mut crate::clang::lsp_server_wraper::Client,
     file_path: &str,
@@ -446,6 +482,14 @@ pub fn main(
                         )
                         .await?;
 
+                        let references_data = handle_references(
+                            &mut client,
+                            &hover_file_path,
+                            &definitions_data,
+                            Some(&hover_progress_bar),
+                        )
+                        .await?;
+
                         let hovers = handle_hovers(
                             &mut client,
                             &hover_file_path,
@@ -454,12 +498,18 @@ pub fn main(
                         )
                         .await?;
 
-                        Ok::<_, anyhow::Error>((semantic_tokens, hovers, definitions_data))
+                        Ok::<_, anyhow::Error>((
+                            semantic_tokens,
+                            hovers,
+                            definitions_data,
+                            references_data,
+                        ))
                     }
                     .await?;
 
                     hover_progress_bar.finish_and_clear();
-                    let (semantic_tokens, hovers, definitions_data) = semantic_and_hovers_result;
+                    let (semantic_tokens, hovers, definitions_data, references_data) =
+                        semantic_and_hovers_result;
 
                     trace!("semantic tokens get finish: {}", file_path);
 
@@ -473,16 +523,23 @@ pub fn main(
                         semantic_tokens_data,
                         hovers,
                         definitions_data,
+                        references_data,
                     ))
                 });
             });
 
         let mut data_tokens = Vec::with_capacity(total);
         while let Some(task_result) = join_set.join_next().await {
-            let (file_index, semantic_tokens_data, hovers, definitions_data) =
+            let (file_index, semantic_tokens_data, hovers, definitions_data, references_data) =
                 task_result.map_err(|e| anyhow!("semantic token task join fail: {}", e))??;
             progress_bar.set_message(file_index.path().to_string_lossy().to_string());
-            data_tokens.push((file_index, semantic_tokens_data, hovers, definitions_data));
+            data_tokens.push((
+                file_index,
+                semantic_tokens_data,
+                hovers,
+                definitions_data,
+                references_data,
+            ));
             progress_bar.inc(1);
         }
         progress_bar.finish_with_message("semantic tokens done");
@@ -493,9 +550,9 @@ pub fn main(
     if debug {
         data_tokens
             .iter()
-            .try_for_each(|(file_index, semantic_tokens, hovers, definitions_data)| {
+            .try_for_each(|(file_index, semantic_tokens, hovers, definitions_data, references_data)| {
                 info!(
-                    "文件: {:?}, 语义标记数量: {} , 悬停信息数量: {} 总字节数: {}, definition数量: {}",
+                    "文件: {:?}, 语义标记数量: {} , 悬停信息数量: {} 总字节数: {}, definition数量: {}, references数量: {}",
                     file_index.path(),
                     semantic_tokens.tokens().len(),
                     hovers.hovers().len(),
@@ -504,7 +561,8 @@ pub fn main(
                         .iter()
                         .map(|t| t.hover().len() as u64)
                         .sum::<u64>(),
-                    definitions_data.definitions().len()
+                    definitions_data.definitions().len(),
+                    references_data.definitions().len()
                 );
                 Ok::<(), anyhow::Error>(())
             })?;

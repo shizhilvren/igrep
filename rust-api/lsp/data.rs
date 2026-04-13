@@ -1,8 +1,12 @@
 use anyhow::{Result, anyhow};
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::{
     collections::HashSet,
     fs::{self, File},
+    io::{Read, Write},
+    ops::Deref,
 };
 
 use crate::lsp::index::FileIndex;
@@ -62,6 +66,13 @@ pub struct DefinitionsData {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReferencesData {
+    references: Vec<ReferenceData>,
+}
+
+pub type ReferenceData = DefinitionData;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DefinitionData {
     range: lsp_types::Range,
     locations: Vec<LocationData>,
@@ -94,6 +105,12 @@ impl LocationData {
 impl DefinitionsData {
     pub fn definitions(&self) -> &[DefinitionData] {
         &self.definitions
+    }
+}
+
+impl ReferencesData {
+    pub fn definitions(&self) -> &[ReferenceData] {
+        &self.references
     }
 }
 impl DefinitionData {
@@ -356,13 +373,40 @@ impl From<Vec<DefinitionData>> for DefinitionsData {
     }
 }
 
-impl FromToData<'_> for FileData {}
-impl FromToData<'_> for TreeData {}
-impl FromToData<'_> for DirData {}
-impl FromToData<'_> for HoversData {}
-impl FromToData<'_> for DefinitionsData {}
+impl From<Vec<ReferenceData>> for ReferencesData {
+    fn from(value: Vec<ReferenceData>) -> Self {
+        Self { references: value }
+    }
+}
 
-pub trait FromToData<'a> {
+impl FromToData for FileData {}
+impl FromToData for TreeData {}
+impl FromToData for DirData {}
+impl FromToData for HoversData {}
+impl FromToData for DefinitionsData {}
+impl FromToData for ReferencesData {
+    fn to_data(&self) -> Result<Vec<u8>>
+    where
+        Self: Serialize,
+    {
+        let raw = postcard::to_stdvec(self)?;
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&raw)?;
+        Ok(encoder.finish()?)
+    }
+
+    fn from_data(data: &[u8]) -> Result<Self>
+    where
+        Self: DeserializeOwned,
+    {
+        let mut decoder = ZlibDecoder::new(data);
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)?;
+        Ok(postcard::from_bytes(&decompressed)?)
+    }
+}
+
+pub trait FromToData {
     fn to_data(&self) -> Result<Vec<u8>>
     where
         Self: Serialize,
@@ -370,9 +414,9 @@ pub trait FromToData<'a> {
         let ret = postcard::to_stdvec(&self)?;
         Ok(ret)
     }
-    fn from_data(data: &'a [u8]) -> Result<Self>
+    fn from_data(data: &[u8]) -> Result<Self>
     where
-        Self: Deserialize<'a>,
+        Self: DeserializeOwned,
     {
         let ans = postcard::from_bytes(data)?;
         Ok(ans)
