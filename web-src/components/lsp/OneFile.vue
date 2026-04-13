@@ -13,8 +13,9 @@ import loader from '@monaco-editor/loader'
 import * as monaco from 'monaco-editor'
 import { registerHoverProvider } from '@/components/lsp/hoverProvider'
 import { registerDefinitionProvider } from '@/components/lsp/definitionProvider'
+import { registerReferenceProvider } from '@/components/lsp/referenceProvider'
 import { applySemanticHighlight } from '@/components/lsp/semanticHighlighter'
-import { FileContent, SemanticTokens, HoverData, DefinitionData, Files } from '@/components/lsp/file'
+import { FileContent, SemanticTokens, HoverData, DefinitionData, ReferenceData, Files } from '@/components/lsp/file'
 
 const el = ref<HTMLElement | null>(null)
 const addModelPromise = ref<Map<string, Promise<void>>>(new Map())
@@ -25,6 +26,7 @@ let sizeDispose: monaco.IDisposable | null = null
 let decorations: monaco.editor.IEditorDecorationsCollection | null = null
 let hoverDispose: monaco.IDisposable | null = null
 let definitionDispose: monaco.IDisposable | null = null
+let referenceDispose: monaco.IDisposable | null = null
 let openerDispose: monaco.IDisposable | null = null
 const createdModelUris = new Set<string>()
 
@@ -68,6 +70,12 @@ const defitition = computed(() => {
     }))
 })
 
+const references = computed(() => {
+    return new Map([...props.files.files.entries()].map(([name, file]) => {
+        return ["file://" + name, file.referenceData]
+    }))
+})
+
 function addFileToModel(file_path: string) {
     const file_path_array = file_path.split('/').filter((e) => { return e != "" })
     const have_file = !!props.files.getFileContent(file_path_array);
@@ -77,13 +85,15 @@ function addFileToModel(file_path: string) {
         const wait = new Promise<void>((resolve, rejects) => {
             const stop = watch(
                 () => props.files.getFileContent(file_path_array),
-                (_, new_model) => {
+                (new_model) => {
+                    console.log("watch file content", file_path_array, new_model)
                     const uri = monaco.Uri.parse("file://" + file_path)
                     const modelText = new_model?.code.join('\n')
                     if (!monaco.editor.getModel(uri) && modelText) {
                         monaco.editor.createModel(modelText, "cpp", uri)
-                        stop()
                         resolve()
+                        console.log("model created for", file_path)
+                        stop()
                     }
                 },
                 { deep: true },
@@ -109,6 +119,11 @@ function updateHoverProvider() {
 function updateDefinitionProvider() {
     definitionDispose?.dispose()
     definitionDispose = registerDefinitionProvider("cpp", defitition, addFileToModel)
+}
+
+function updateReferenceProvider() {
+    referenceDispose?.dispose()
+    referenceDispose = registerReferenceProvider("cpp", references, addFileToModel)
 }
 
 function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
@@ -262,6 +277,7 @@ onMounted(async () => {
     updateHoverProvider()
     updateSemanticHighlight(semantic.value)
     updateDefinitionProvider()
+    updateReferenceProvider()
 })
 
 
@@ -291,19 +307,19 @@ onMounted(async () => {
 
 watch(
     () => semantic.value,
-    (_, new_semantic_tokens) => {
+    (new_semantic_tokens) => {
         updateSemanticHighlight(new_semantic_tokens)
     },
     { deep: true },
 )
 
 watch(
-    () => code,
-    (_, new_val) => {
-        if (!editor || !new_val.value.code || !new_val.value.language) {
+    code,
+    (new_val) => {
+        if (!editor || !new_val.code || !new_val.language) {
             return
         }
-        ensureFileModel(new_val.value.code, new_val.value.language, new_val.value.uri.value)
+        ensureFileModel(new_val.code, new_val.language, new_val.uri.value)
         // updateDefinitionProvider()
         // updateSemanticHighlight()
     },
@@ -315,6 +331,8 @@ onBeforeUnmount(() => {
     hoverDispose = null
     definitionDispose?.dispose()
     definitionDispose = null
+    referenceDispose?.dispose()
+    referenceDispose = null
     openerDispose?.dispose()
     openerDispose = null
     sizeDispose?.dispose()

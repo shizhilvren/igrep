@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { DefinitionData, DefinitionLocationModel, FileContent, Files, HoverData, SemanticToken, SemanticTokens } from '@/components/lsp/file'
+import { DefinitionData, DefinitionLocationModel, FileContent, Files, HoverData, ReferenceData, ReferenceLocationModel, SemanticToken, SemanticTokens } from '@/components/lsp/file'
 import FilePathBar from '@/components/lsp/FilePathBar.vue';
 import OneFile from '@/components/lsp/OneFile.vue';
 import { computed, ref, watch } from 'vue';
@@ -67,14 +67,19 @@ async function addFileToModel(file_path: string) {
 
                 const hoverRawData = await get_hover_data(file_path_array)
                 const hovers = parseHoverData(hoverRawData)
-                // const definitionRawData = await get_definition_data(basePath)
-                // const defititions = parseDefinitionData(definitionRawData)
+                const definitionRawData = await get_definition_data(file_path_array)
+                const defititions = parseDefinitionData(definitionRawData)
+                // const referencesRawData = await get_references_data(file_path_array)
+                // const references = parseReferencesData(referencesRawData)
                 files.value.getFileContent(file_path_array)?.setHoverData(hovers)
-                // files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+                files.value.getFileContent(file_path_array)?.setDefinitionData(defititions)
+                // files.value.getFileContent(file_path_array)?.setReferenceData(references)
             }
         } catch (e) {
-            console.warn("Failed to parse tree data for file:", file_path, e)
-            return
+            let file = new FileContent(file_path_array, ["this file not in index", file_path], "cpp", new SemanticTokens([]))
+            files.value.addFileContent(file_path_array, file)
+            console.log("add empty file", file_path, file)
+            return 1
         }
     }
     return 1
@@ -122,8 +127,11 @@ async function refreshDirData(basePath: string[]) {
         const hovers = parseHoverData(hoverRawData)
         const definitionRawData = await get_definition_data(basePath)
         const defititions = parseDefinitionData(definitionRawData)
+        const referencesRawData = await get_references_data(basePath)
+        const references = parseReferencesData(referencesRawData)
         files.value.getFileContent(basePath)?.setHoverData(hovers)
         files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+        files.value.getFileContent(basePath)?.setReferenceData(references)
         // console.log(code.value)
     }
 }
@@ -209,6 +217,47 @@ function parseHoverData(data: Uint8Array | undefined): HoverData[] {
     })
 }
 
+function parseReferencesData(data: Uint8Array | undefined): ReferenceData[] {
+    if (!data) {
+        return []
+    }
+
+    return new igrep.ReferencesData(data).references().map((reference) => {
+        const range = reference.range()
+        const start = range.start()
+        const end = range.end()
+        const locations = reference.locations().map((location) => {
+            const locationRange = location.range()
+            const locationStart = locationRange.start()
+            const locationEnd = locationRange.end()
+
+            return new ReferenceLocationModel(
+                location.file_name(),
+                {
+                    line: locationStart.line(),
+                    character: locationStart.character(),
+                },
+                {
+                    line: locationEnd.line(),
+                    character: locationEnd.character(),
+                },
+            )
+        })
+
+        return new ReferenceData(
+            {
+                line: start.line(),
+                character: start.character(),
+            },
+            {
+                line: end.line(),
+                character: end.character(),
+            },
+            locations,
+        )
+    })
+}
+
 async function get_tree_data(path: string[]) {
     let path_str = path.join("/");
     let path_index = new igrep.PathIndex(path_str);
@@ -227,6 +276,13 @@ async function get_definition_data(path: string[]) {
     let path_str = path.join("/");
     let path_index = new igrep.PathIndex(path_str);
     let data = await fetchFileData(path_index.path_str("lsp-index") + "/definition.data");
+    return data
+}
+
+async function get_references_data(path: string[]) {
+    let path_str = path.join("/");
+    let path_index = new igrep.PathIndex(path_str);
+    let data = await fetchFileData(path_index.path_str("lsp-index") + "/references.data");
     return data
 }
 

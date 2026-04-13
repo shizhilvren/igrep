@@ -21,6 +21,7 @@ export class FileContent {
     readonly semanticTokens: SemanticTokens
     hoverData?: HoverData[]
     definitionData?: DefinitionData[]
+    referenceData?: ReferenceData[]
 
     constructor(filePath: string[], code: string[], language: string, semanticTokens: SemanticTokens) {
         this.code = code
@@ -39,6 +40,12 @@ export class FileContent {
     }
     public setDefinitionData(val: DefinitionData[]) {
         this.definitionData = val
+    }
+    public getReferenceData(): ReferenceData[] | undefined {
+        return this.referenceData
+    }
+    public setReferenceData(val: ReferenceData[]) {
+        this.referenceData = val
     }
 }
 
@@ -98,6 +105,30 @@ export class DefinitionData {
     readonly locations: DefinitionLocationModel[]
 
     constructor(start: HoverPosition, end: HoverPosition, locations: DefinitionLocationModel[]) {
+        this.start = start
+        this.end = end
+        this.locations = locations
+    }
+}
+
+export class ReferenceLocationModel {
+    readonly fileName: string
+    readonly start: HoverPosition
+    readonly end: HoverPosition
+
+    constructor(fileName: string, start: HoverPosition, end: HoverPosition) {
+        this.fileName = fileName
+        this.start = start
+        this.end = end
+    }
+}
+
+export class ReferenceData {
+    readonly start: HoverPosition
+    readonly end: HoverPosition
+    readonly locations: ReferenceLocationModel[]
+
+    constructor(start: HoverPosition, end: HoverPosition, locations: ReferenceLocationModel[]) {
         this.start = start
         this.end = end
         this.locations = locations

@@ -89,6 +89,11 @@ pub struct DefinitionsData {
 }
 
 #[wasm_bindgen]
+pub struct ReferencesData {
+    data: crate::lsp::data::ReferencesData,
+}
+
+#[wasm_bindgen]
 pub struct LocationData {
     data: crate::lsp::data::LocationData,
 }
@@ -96,6 +101,11 @@ pub struct LocationData {
 #[wasm_bindgen]
 pub struct DefinitionData {
     data: crate::lsp::data::DefinitionData,
+}
+
+#[wasm_bindgen]
+pub struct ReferenceData {
+    data: crate::lsp::data::ReferenceData,
 }
 
 #[wasm_bindgen]
@@ -114,7 +124,41 @@ impl DefinitionsData {
 }
 
 #[wasm_bindgen]
+impl ReferencesData {
+    pub fn references(&self) -> Vec<ReferenceData> {
+        self.data
+            .definitions()
+            .iter()
+            .map(|d| ReferenceData::from(d))
+            .collect()
+    }
+
+    pub fn definitions(&self) -> Vec<ReferenceData> {
+        self.references()
+    }
+
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: Vec<u8>) -> Self {
+        Self::try_from(&data).expect("data not correct")
+    }
+}
+
+#[wasm_bindgen]
 impl DefinitionData {
+    pub fn range(&self) -> LocationRange {
+        LocationRange::from(self.data.range())
+    }
+    pub fn locations(&self) -> Vec<LocationData> {
+        self.data
+            .locations()
+            .iter()
+            .map(|l| LocationData::from(l))
+            .collect()
+    }
+}
+
+#[wasm_bindgen]
+impl ReferenceData {
     pub fn range(&self) -> LocationRange {
         LocationRange::from(self.data.range())
     }
@@ -330,8 +374,23 @@ impl TryFrom<&Vec<u8>> for DefinitionsData {
         Ok(Self { data: d })
     }
 }
+
+impl TryFrom<&Vec<u8>> for ReferencesData {
+    type Error = anyhow::Error;
+    fn try_from(value: &Vec<u8>) -> anyhow::Result<Self> {
+        let d = crate::lsp::data::ReferencesData::from_data(value.as_slice())?;
+        Ok(Self { data: d })
+    }
+}
+
 impl From<&crate::lsp::data::DefinitionData> for DefinitionData {
     fn from(data: &crate::lsp::data::DefinitionData) -> Self {
+        Self { data: data.clone() }
+    }
+}
+
+impl From<&crate::lsp::data::ReferenceData> for ReferenceData {
+    fn from(data: &crate::lsp::data::ReferenceData) -> Self {
         Self { data: data.clone() }
     }
 }
