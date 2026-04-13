@@ -531,7 +531,7 @@ impl ClangdClient {
         let jobs = jobs
             .unwrap_or_else(|| {
                 std::thread::available_parallelism()
-                    .map(|n| n.get().saturating_mul(2))
+                    .map(|n| n.get().saturating_mul(1))
                     .unwrap_or(2)
             })
             .to_string();

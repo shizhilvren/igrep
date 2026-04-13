@@ -3,15 +3,17 @@
         <div style="padding-left: 10px;">
             <FilePathBar v-bind="{ filePath: normalizedPath }" />
         </div>
-        <DirTree v-if="is_dir" v-bind="{
-            dirs: dir_data.dirs,
-            files: dir_data.files,
-            base_path: normalizedPath
-        }" />
-        <OneFile v-if="is_file" class="file-editor" v-bind="{
-            files: files,
-            filePath: normalizedPath
-        }" @add-file-to-model="addFileToModel" @change-file="changeFile" />
+        <div v-loading="loading" :class="['content-wrap', is_file ? 'content-wrap--fill' : 'content-wrap--auto']">
+            <DirTree v-if="is_dir" class="dir-content" v-bind="{
+                dirs: dir_data.dirs,
+                files: dir_data.files,
+                base_path: normalizedPath
+            }" />
+            <OneFile v-if="is_file" class="file-editor" v-bind="{
+                files: files,
+                filePath: normalizedPath
+            }" @add-file-to-model="addFileToModel" @change-file="changeFile" />
+        </div>
     </main>
 </template>
 
@@ -38,6 +40,7 @@ const dir_data = ref<DirData>(new DirData([], []))
 // const definitionData = ref<DefinitionDataModel[]>([])
 const is_dir = ref(false)
 const is_file = ref(false)
+const loading = ref(false)
 const files = ref<Files>(new Files())
 function changeFile(file_path: string) {
     console.log("change file", file_path)
@@ -100,40 +103,50 @@ function isSamePath(a: string[], b: string[]): boolean {
 const normalizedPath = computed<string[]>(() => normalizeFilePath(props.filePath))
 
 async function refreshDirData(basePath: string[]) {
-    const data = await get_tree_data(basePath)
-    const tree_data = new igrep.TreeData(data!)
+    loading.value = true
+    try {
+        const data = await get_tree_data(basePath)
+        const tree_data = new igrep.TreeData(data!)
 
 
-    if (tree_data.is_dir()) {
-        is_dir.value = true
-        is_file.value = false
-        // hoverData.value = []
-        // definitionData.value = []
-        const dirData = tree_data.dir_data()!
-        const files = dirData.files().map((f) => f.name())
-        const dirs = dirData.dirs().map((d) => d.name())
-        dir_data.value = new DirData(dirs, files)
-    } else if (tree_data.is_file()) {
-        is_dir.value = false
-        is_file.value = true
-        const fileData = tree_data.file_data()!
-        const semanticTokens = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
-            (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
-        let file = new FileContent(basePath, fileData.lines(), "cpp", semanticTokens!)
-        files.value.addFileContent(basePath, file)
-        console.log("files", files)
+        if (tree_data.is_dir()) {
+            is_dir.value = true
+            is_file.value = false
+            // hoverData.value = []
+            // definitionData.value = []
+            const dirData = tree_data.dir_data()!
+            const files = dirData.files().map((f) => f.name())
+            const dirs = dirData.dirs().map((d) => d.name())
+            dir_data.value = new DirData(dirs, files)
+        } else if (tree_data.is_file()) {
+            is_dir.value = false
+            is_file.value = true
+            const fileData = tree_data.file_data()!
+            const semanticTokens = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
+                (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
+            let file = new FileContent(basePath, fileData.lines(), "cpp", semanticTokens!)
+            files.value.addFileContent(basePath, file)
+            console.log("files", files)
 
-        const hoverRawData = await get_hover_data(basePath)
-        const hovers = parseHoverData(hoverRawData)
-        const definitionRawData = await get_definition_data(basePath)
-        const defititions = parseDefinitionData(definitionRawData)
-        const referencesRawData = await get_references_data(basePath)
-        const references = parseReferencesData(referencesRawData)
-        files.value.getFileContent(basePath)?.setHoverData(hovers)
-        files.value.getFileContent(basePath)?.setDefinitionData(defititions)
-        files.value.getFileContent(basePath)?.setReferenceData(references)
-        // console.log(code.value)
+            loading.value = false
+
+            const hoverRawData = await get_hover_data(basePath)
+            const hovers = parseHoverData(hoverRawData)
+            const definitionRawData = await get_definition_data(basePath)
+            const defititions = parseDefinitionData(definitionRawData)
+            const referencesRawData = await get_references_data(basePath)
+            const references = parseReferencesData(referencesRawData)
+            files.value.getFileContent(basePath)?.setHoverData(hovers)
+            files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+            files.value.getFileContent(basePath)?.setReferenceData(references)
+            // console.log(code.value)
+        }
+    } catch (e) {
+        console.error("Failed to add file to model:", e)
+    } finally {
+        loading.value = false
     }
+
 }
 
 
@@ -298,8 +311,6 @@ class DirData {
 }
 </script>
 
-
-
 <style scoped>
 .file-view {
     height: 100%;
@@ -312,5 +323,24 @@ class DirData {
 .file-editor {
     flex: 1;
     min-height: 0;
+}
+
+.content-wrap {
+    width: 100%;
+}
+
+.content-wrap--auto {
+    height: fit-content;
+}
+
+.content-wrap--fill {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.dir-content {
+    height: fit-content;
 }
 </style>
