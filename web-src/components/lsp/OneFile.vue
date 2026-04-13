@@ -16,6 +16,8 @@ import { registerDefinitionProvider } from '@/components/lsp/definitionProvider'
 import { registerReferenceProvider } from '@/components/lsp/referenceProvider'
 import { applySemanticHighlight } from '@/components/lsp/semanticHighlighter'
 import { FileContent, SemanticTokens, HoverData, DefinitionData, ReferenceData, Files } from '@/components/lsp/file'
+import { ElNotification } from 'element-plus'
+
 
 const el = ref<HTMLElement | null>(null)
 const addModelPromise = ref<Map<string, Promise<void>>>(new Map())
@@ -123,7 +125,7 @@ function updateDefinitionProvider() {
 
 function updateReferenceProvider() {
     referenceDispose?.dispose()
-    referenceDispose = registerReferenceProvider("cpp", references, addFileToModel)
+    referenceDispose = registerReferenceProvider("cpp", references, addFileToModel, showNotification)
 }
 
 function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
@@ -219,6 +221,16 @@ function ensureFileModel(code: string[], language: string, file_uri: monaco.Uri)
         editor.setModel(model)
     }
 }
+
+function showNotification(title: string, msg: string, type: 'info' | 'success' | 'warning' | 'error' = 'info', duration = 2000) {
+    return ElNotification({
+        title,
+        message: msg,
+        type: type,
+        duration: duration,
+    })
+}
+
 
 onMounted(async () => {
     loader.config({ monaco })

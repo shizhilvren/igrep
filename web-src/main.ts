@@ -1,4 +1,5 @@
 import './assets/main.css'
+import 'element-plus/es/components/notification/style/css'
 
 import { createApp } from 'vue'
 import App from './App.vue'

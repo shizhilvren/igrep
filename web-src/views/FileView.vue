@@ -3,6 +3,7 @@
         <div style="padding-left: 10px;">
             <FilePathBar v-bind="{ filePath: normalizedPath }" />
         </div>
+        <!-- <el-button plain @click="open2">Info</el-button> -->
         <div v-loading="loading" :class="['content-wrap', is_file ? 'content-wrap--fill' : 'content-wrap--auto']">
             <DirTree v-if="is_dir" class="dir-content" v-bind="{
                 dirs: dir_data.dirs,
@@ -42,6 +43,9 @@ const is_dir = ref(false)
 const is_file = ref(false)
 const loading = ref(false)
 const files = ref<Files>(new Files())
+
+
+
 function changeFile(file_path: string) {
     console.log("change file", file_path)
     const file_path_array = file_path.split('/').filter((e) => {
@@ -298,7 +302,6 @@ async function get_references_data(path: string[]) {
     let data = await fetchFileData(path_index.path_str("lsp-index") + "/references.data");
     return data
 }
-
 
 class DirData {
     readonly dirs: string[]

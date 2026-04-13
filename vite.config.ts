@@ -8,8 +8,13 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
+
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
+
+const elementPlusResolver = ElementPlusResolver({
+  importStyle: 'css',
+})
 
 const projectRoot = fileURLToPath(new URL('./', import.meta.url));
 const ngramRoot = resolve(projectRoot, 'ngram-index');
@@ -59,10 +64,10 @@ export default defineConfig({
     vue(),
     vueDevTools(),
     AutoImport({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [elementPlusResolver],
     }),
     Components({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [elementPlusResolver],
     }),
   ],
   resolve: {
