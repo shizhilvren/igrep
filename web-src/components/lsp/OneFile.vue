@@ -30,6 +30,7 @@ const createdModelUris = new Set<string>()
 
 const emit = defineEmits<{
     'addFileToModel': [file_path: string]
+    'changeFile': [file_path: string]
 }>()
 
 
@@ -110,61 +111,61 @@ function updateDefinitionProvider() {
     definitionDispose = registerDefinitionProvider("cpp", defitition, addFileToModel)
 }
 
-// function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
-//     if (!selectionOrPosition) {
-//         return undefined
-//     }
+function toEditorTargetRange(selectionOrPosition?: monaco.IRange | monaco.IPosition): monaco.Range | undefined {
+    if (!selectionOrPosition) {
+        return undefined
+    }
 
-//     const maybeRange = selectionOrPosition as monaco.IRange
-//     if (
-//         typeof maybeRange.startLineNumber === 'number'
-//         && typeof maybeRange.startColumn === 'number'
-//         && typeof maybeRange.endLineNumber === 'number'
-//         && typeof maybeRange.endColumn === 'number'
-//     ) {
-//         return new monaco.Range(
-//             maybeRange.startLineNumber,
-//             maybeRange.startColumn,
-//             maybeRange.endLineNumber,
-//             maybeRange.endColumn,
-//         )
-//     }
+    const maybeRange = selectionOrPosition as monaco.IRange
+    if (
+        typeof maybeRange.startLineNumber === 'number'
+        && typeof maybeRange.startColumn === 'number'
+        && typeof maybeRange.endLineNumber === 'number'
+        && typeof maybeRange.endColumn === 'number'
+    ) {
+        return new monaco.Range(
+            maybeRange.startLineNumber,
+            maybeRange.startColumn,
+            maybeRange.endLineNumber,
+            maybeRange.endColumn,
+        )
+    }
 
-//     const maybePosition = selectionOrPosition as monaco.IPosition
-//     if (typeof maybePosition.lineNumber === 'number' && typeof maybePosition.column === 'number') {
-//         return new monaco.Range(
-//             maybePosition.lineNumber,
-//             maybePosition.column,
-//             maybePosition.lineNumber,
-//             maybePosition.column,
-//         )
-//     }
+    const maybePosition = selectionOrPosition as monaco.IPosition
+    if (typeof maybePosition.lineNumber === 'number' && typeof maybePosition.column === 'number') {
+        return new monaco.Range(
+            maybePosition.lineNumber,
+            maybePosition.column,
+            maybePosition.lineNumber,
+            maybePosition.column,
+        )
+    }
 
-//     return undefined
-// }
+    return undefined
+}
 
-// function expandCollapsedRangeToWord(model: monaco.editor.ITextModel, range: monaco.Range): monaco.Range {
-//     if (!range.isEmpty()) {
-//         return range
-//     }
+function expandCollapsedRangeToWord(model: monaco.editor.ITextModel, range: monaco.Range): monaco.Range {
+    if (!range.isEmpty()) {
+        return range
+    }
 
-//     const word = model.getWordAtPosition({
-//         lineNumber: range.startLineNumber,
-//         column: range.startColumn,
-//     })
-//     console.log(word, range)
+    const word = model.getWordAtPosition({
+        lineNumber: range.startLineNumber,
+        column: range.startColumn,
+    })
+    console.log(word, range)
 
-//     if (!word) {
-//         return range
-//     }
+    if (!word) {
+        return range
+    }
 
-//     return new monaco.Range(
-//         range.startLineNumber,
-//         word.startColumn,
-//         range.startLineNumber,
-//         word.endColumn,
-//     )
-// }
+    return new monaco.Range(
+        range.startLineNumber,
+        word.startColumn,
+        range.startLineNumber,
+        word.endColumn,
+    )
+}
 
 function toModelUri(filePath: string[] | undefined): monaco.Uri {
     const normalizedPath = (filePath ?? [])
@@ -205,7 +206,6 @@ function ensureFileModel(code: string[], language: string, file_uri: monaco.Uri)
 }
 
 onMounted(async () => {
-    console.log("OneFile onMunted")
     loader.config({ monaco })
     await loader.init()
 
@@ -222,32 +222,34 @@ onMounted(async () => {
         wordWrap: 'off',
     })
 
-    // openerDispose = monaco.editor.registerEditorOpener({
-    //     async openCodeEditor(_, resource, selectionOrPosition) {
-    //         if (!editor) {
-    //             return false
-    //         }
+    openerDispose = monaco.editor.registerEditorOpener({
+        openCodeEditor: (_, resource, selectionOrPosition) => {
+            if (!editor) {
+                return false
+            }
+            const model = monaco.editor.getModel(resource)
+            if (!model) {
+                return false
+            }
 
-    //         const model = monaco.editor.getModel(resource)
-    //         if (!model) {
-    //             return false
-    //         }
+            editor.setModel(model)
+            const targetRange = toEditorTargetRange(selectionOrPosition)
+            if (targetRange) {
+                const highlightRange = expandCollapsedRangeToWord(model, targetRange)
+                // console.log('Highlight range:', highlightRange)
+                editor.setSelection(highlightRange)
+                editor.revealRangeInCenter(highlightRange)
+            }
 
-    //         editor.setModel(model)
-    //         createdModelUris.add(resource.toString())
+            emit("changeFile", resource.path)
+            // createdModelUris.add(resource.toString())
 
-    //         const targetRange = toEditorTargetRange(selectionOrPosition)
-    //         if (targetRange) {
-    //             const highlightRange = expandCollapsedRangeToWord(model, targetRange)
-    //             console.log('Highlight range:', highlightRange)
-    //             editor.setSelection(highlightRange)
-    //             editor.revealRangeInCenter(highlightRange)
-    //         }
 
-    //         editor.focus()
-    //         return true
-    //     },
-    // })
+
+            editor.focus()
+            return true
+        },
+    })
 
     const initialModel = editor.getModel()
     if (code.value.code && code.value.language) {

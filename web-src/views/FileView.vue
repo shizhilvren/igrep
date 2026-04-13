@@ -11,7 +11,7 @@
         <OneFile v-if="is_file" class="file-editor" v-bind="{
             files: files,
             filePath: normalizedPath
-        }" @add-file-to-model="addFileToModel" />
+        }" @add-file-to-model="addFileToModel" @change-file="changeFile" />
     </main>
 </template>
 
@@ -20,9 +20,12 @@ import { DefinitionData, DefinitionLocationModel, FileContent, Files, HoverData,
 import FilePathBar from '@/components/lsp/FilePathBar.vue';
 import OneFile from '@/components/lsp/OneFile.vue';
 import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import * as igrep from 'igrep';
 import { fetchFileData } from "@/utils/utils"
 import DirTree from '@/components/lsp/DirTree.vue';
+
+const router = useRouter();
 
 const props = defineProps<{
     filePath: string | string[]
@@ -36,6 +39,14 @@ const dir_data = ref<DirData>(new DirData([], []))
 const is_dir = ref(false)
 const is_file = ref(false)
 const files = ref<Files>(new Files())
+function changeFile(file_path: string) {
+    console.log("change file", file_path)
+    const file_path_array = file_path.split('/').filter((e) => {
+        return e != ''
+    })
+    router.push({ name: "files", params: { filePath: file_path_array } })
+    // await refreshDirData(file_path_array)
+}
 
 async function addFileToModel(file_path: string) {
     console.log("add file to model", file_path)
@@ -44,21 +55,26 @@ async function addFileToModel(file_path: string) {
     })
     let data = await get_tree_data(file_path_array)
     if (data) {
-        const tree_data = new igrep.TreeData(data)
-        if (tree_data.is_file()) {
-            const fileData = tree_data.file_data()!
-            const semanticTokens = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
-                (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
-            let file = new FileContent(file_path_array, fileData.lines(), "cpp", semanticTokens!)
-            files.value.addFileContent(file_path_array, file)
-            console.log("files", files)
+        try {
+            const tree_data = new igrep.TreeData(data)
+            if (tree_data.is_file()) {
+                const fileData = tree_data.file_data()!
+                const semanticTokens = fileData.semantic_tokens() ? new SemanticTokens(fileData.semantic_tokens()!.map(
+                    (t) => new SemanticToken(t.delta_line(), t.delta_start(), t.length(), t.token_type(), t.token_modifiers_bitset()))) : undefined
+                let file = new FileContent(file_path_array, fileData.lines(), "cpp", semanticTokens!)
+                files.value.addFileContent(file_path_array, file)
+                console.log("files", files)
 
-            const hoverRawData = await get_hover_data(file_path_array)
-            const hovers = parseHoverData(hoverRawData)
-            // const definitionRawData = await get_definition_data(basePath)
-            // const defititions = parseDefinitionData(definitionRawData)
-            files.value.getFileContent(file_path_array)?.setHoverData(hovers)
-            // files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+                const hoverRawData = await get_hover_data(file_path_array)
+                const hovers = parseHoverData(hoverRawData)
+                // const definitionRawData = await get_definition_data(basePath)
+                // const defititions = parseDefinitionData(definitionRawData)
+                files.value.getFileContent(file_path_array)?.setHoverData(hovers)
+                // files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+            }
+        } catch (e) {
+            console.warn("Failed to parse tree data for file:", file_path, e)
+            return
         }
     }
     return 1
@@ -164,7 +180,7 @@ function parseDefinitionData(data: Uint8Array | undefined): DefinitionData[] {
             locations,
         )
     });
-    console.log("this is definitions", definitions);
+    // console.log("this is definitions", definitions);
     return definitions
 }
 
