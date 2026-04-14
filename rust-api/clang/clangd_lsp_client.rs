@@ -285,12 +285,12 @@ pub async fn handle_hovers(
                 .iter()
                 .map(|token_type| match token_type.as_str() {
                     // t if t == lsp_types::SemanticTokenType::NAMESPACE.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
@@ -457,7 +457,7 @@ pub fn main(
                     ) {
                         hover_progress_bar.set_style(style.progress_chars("=> "));
                     }
-                    hover_progress_bar.enable_steady_tick(Duration::from_millis(700));
+                    hover_progress_bar.enable_steady_tick(Duration::from_millis(2000));
                     hover_progress_bar.set_length(1);
                     hover_progress_bar.set_position(0);
                     hover_progress_bar.set_message(format!("semantic {}", file_path));
