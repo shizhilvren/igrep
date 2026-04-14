@@ -44,5 +44,8 @@ tokio = { version = "1.51", features = [
     "sync",
     "process",
     "io-util",
+    "tracing",
 ] }
 indicatif = "0.17.11"
+console-subscriber = "0.5"
+

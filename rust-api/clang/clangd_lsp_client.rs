@@ -3,7 +3,14 @@ use futures::executor::block_on;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, info, trace, warn};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{fs, io::BufRead, ops::Mul, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    fs,
+    io::BufRead,
+    ops::Mul,
+    path::PathBuf,
+    sync::{Arc, Once},
+    time::Duration,
+};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -13,6 +20,8 @@ use crate::lsp::{
     data::{DefinitionData, DefinitionsData, HoversData, ReferencesData},
     index::FileIndex,
 };
+
+static TOKIO_CONSOLE_INIT: Once = Once::new();
 
 fn init_lsp_client(
     rt: &tokio::runtime::Runtime,
@@ -376,7 +385,14 @@ pub fn main(
     compile_commands_dir: String,
     config: &str,
     jobs: Option<usize>,
+    tokio_console: bool,
 ) -> Result<()> {
+    if tokio_console {
+        TOKIO_CONSOLE_INIT.call_once(|| {
+            console_subscriber::init();
+        });
+    }
+
     let worker_threads = jobs.unwrap_or(
         std::thread::available_parallelism()
             .map(|n| n.get())
@@ -387,6 +403,7 @@ pub fn main(
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_threads)
         .thread_name("lsp-server-wrapper") // 设置线程名称
+        // .enable_io()
         .enable_all() // 启用 IO 和 Time 驱动
         .build()
         .unwrap();

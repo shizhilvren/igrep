@@ -109,10 +109,13 @@ struct ClangIndexArgs {
 
     #[arg(short = 'j', long)]
     jobs: Option<usize>,
+
+    #[arg(long, default_value_t = false)]
+    tokio_console: bool,
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    // env_logger::init();
     let cli = Cli::parse();
 
     if cli.verbose {
@@ -133,6 +136,7 @@ fn main() -> Result<()> {
                 args.compile_commands_dir.to_string(),
                 &args.config,
                 args.jobs,
+                args.tokio_console,
             )
             .map_err(|e| anyhow!("Failed to run Clang index: {}", e))
         }
