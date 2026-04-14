@@ -115,7 +115,7 @@ struct ClangIndexArgs {
 }
 
 fn main() -> Result<()> {
-    // env_logger::init();
+    env_logger::init();
     let cli = Cli::parse();
 
     if cli.verbose {

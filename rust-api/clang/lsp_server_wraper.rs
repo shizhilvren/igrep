@@ -1,11 +1,14 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, ops::Sub, str::FromStr};
 
 use anyhow::{Result, anyhow};
 use log::{debug, error, info, warn};
 use serde_json::Value;
 
 use lsp_types::{
-    ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, PartialResultParams, Position, ReferenceParams, TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri, WorkDoneProgressParams
+    ClientCapabilities, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
+    PartialResultParams, Position, ReferenceParams, TextDocumentClientCapabilities,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
+    WorkDoneProgressParams, request::GotoDeclarationParams,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -329,6 +332,29 @@ impl Client {
         self.request("textDocument/definition", params)
     }
 
+    pub fn declaration(
+        &mut self,
+        file_path: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<oneshot::Receiver<ResponseToClientData>> {
+        let uri = Uri::from_str(&format!("file://{}", file_path))?;
+        let params = GotoDeclarationParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position { line, character },
+            },
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+            partial_result_params: PartialResultParams {
+                partial_result_token: None,
+            },
+        };
+
+        self.request("textDocument/declaration", params)
+    }
+
     pub fn references(
         &mut self,
         file_path: &str,
@@ -531,7 +557,7 @@ impl ClangdClient {
         let jobs = jobs
             .unwrap_or_else(|| {
                 std::thread::available_parallelism()
-                    .map(|n| n.get().saturating_mul(1))
+                    .map(|n| n.get().saturating_mul(1).sub(1).max(1))
                     .unwrap_or(2)
             })
             .to_string();

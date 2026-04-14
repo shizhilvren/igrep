@@ -149,6 +149,8 @@ pub async fn handle_definition(
                     t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::PARAMETER.as_str() => true,
+                    t if t == lsp_types::SemanticTokenType::PROPERTY.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
                     t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
@@ -236,11 +238,11 @@ pub async fn handle_definition(
                     .unwrap_or("<unknown>")
             );
         }
+        if let Some(progress_bar) = hover_progress_bar {
+            progress_bar.inc(1);
+        }
     }
     let definitions = DefinitionsData::from(definitions);
-    if let Some(progress_bar) = hover_progress_bar {
-        progress_bar.inc(1);
-    }
     Ok(definitions)
 }
 
@@ -271,15 +273,50 @@ pub async fn handle_references(
         if !references_data.locations().is_empty() {
             references.push(references_data);
         }
+        if let Some(progress_bar) = hover_progress_bar {
+            progress_bar.inc(1);
+        }
     }
 
-    if let Some(progress_bar) = hover_progress_bar {
-        progress_bar.inc(1);
-    }
 
     Ok(ReferencesData::from(references))
 }
 
+pub async fn show_token(
+    client: &mut crate::clang::lsp_server_wraper::Client,
+    file_path: &str,
+    tokens: &lsp_types::SemanticTokens,
+) -> Result<()> {
+    let file_lines = fs::read_to_string(file_path)?
+        .lines()
+        .map(|e| e.to_string())
+        .collect::<Vec<_>>();
+    tokens
+        .data
+        .iter()
+        .scan((0, 0), |(row, col), token| {
+            match token.delta_line {
+                0 => {
+                    *col += token.delta_start;
+                }
+                _ => {
+                    *row += token.delta_line;
+                    *col = token.delta_start;
+                }
+            }
+            Some((*row, *col, token.length, token.token_type))
+        })
+        .for_each(|(row, col, len, token_type)| {
+            let line = &file_lines[row as usize];
+            trace!(
+                "{file_path}:{row}:{col} {} {}",
+                &line[(col as usize)..((col + len) as usize)],
+                client.get_semantic_tokens_server().unwrap().token_types[token_type as usize]
+                    .as_str()
+            );
+        });
+    Ok(())
+}
 pub async fn handle_hovers(
     client: &mut crate::clang::lsp_server_wraper::Client,
     file_path: &str,
@@ -293,16 +330,18 @@ pub async fn handle_hovers(
                 .token_types
                 .iter()
                 .map(|token_type| match token_type.as_str() {
-                    // t if t == lsp_types::SemanticTokenType::NAMESPACE.as_str() => true,
-                    // t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
-                    // t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
-                    // t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
-                    // t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
-                    t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
+                    // // t if t == lsp_types::SemanticTokenType::NAMESPACE.as_str() => true,
+                    // // t if t == lsp_types::SemanticTokenType::TYPE.as_str() => true,
+                    // // t if t == lsp_types::SemanticTokenType::CLASS.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::ENUM.as_str() => true,
+                    // // t if t == lsp_types::SemanticTokenType::STRUCT.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::PARAMETER.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::PROPERTY.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::ENUM_MEMBER.as_str() => true,
+                    // // t if t == lsp_types::SemanticTokenType::VARIABLE.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::FUNCTION.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::METHOD.as_str() => true,
+                    // t if t == lsp_types::SemanticTokenType::MACRO.as_str() => true,
                     _ => false,
                 })
                 .collect::<Vec<_>>()
@@ -490,6 +529,9 @@ pub fn main(
                         )
                         .await?;
                         trace!("semantic tokens get finish: {}", file_path);
+                        if debug{
+                            show_token(&mut client, &file_path, &semantic_tokens).await?;
+                        }
 
                         let definitions_data = handle_definition(
                             &mut client,
