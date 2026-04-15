@@ -21,6 +21,7 @@ import HelloWorld from './components/HelloWorld.vue'
   <nav>
     <RouterLink to="/search">Go to search</RouterLink>
     <RouterLink to="/files">Go to files</RouterLink>
+    <RouterLink to="/vm">Go to vm</RouterLink>
   </nav>
   <main class="app-main">
     <RouterView />

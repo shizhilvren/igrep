@@ -19,6 +19,7 @@ package-lock.json
 Cargo.lock
 rust-api/web_api/target
 rust-api/web_api/target/*
+VM
 
 # Logs
 logs

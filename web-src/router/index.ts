@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import SearchView from '@/views/SearchView.vue'
 import FilesView from '@/views/FilesView.vue'
 import FileView from '@/views/FileView.vue'
+import VMView from '@/views/VMView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -30,6 +31,11 @@ const router = createRouter({
       name: "files",
       component: FileView,
       props: route => ({ filePath: route.params.filePath }),
+    },
+    {
+      path: '/vm',
+      name: 'vm',
+      component: VMView,
     }
   ],
 })
