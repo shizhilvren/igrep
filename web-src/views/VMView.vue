@@ -9,14 +9,9 @@
 
         <section class="vm-serial-panel">
             <div class="vm-serial-controls">
-                <input
-                    v-model="serialInput"
-                    class="vm-serial-input"
-                    type="text"
-                    placeholder="Send command to serial (Enter to send)"
-                    :disabled="!running"
-                    @keydown.enter.prevent="sendSerialInput"
-                />
+                <input v-model="serialInput" class="vm-serial-input" type="text"
+                    placeholder="Send command to serial (Enter to send)" :disabled="!running"
+                    @keydown.enter.prevent="sendSerialInput" />
                 <button class="vm-btn" :disabled="!running || !serialInput" @click="sendSerialInput">Send</button>
                 <button class="vm-btn" :disabled="!serialLog" @click="clearSerialLog">Clear Log</button>
             </div>
@@ -34,16 +29,16 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { V86, type V86Image } from "../../v86";
 
-const WASM_PATH = "/v86/build/v86.wasm";
-const BIOS_URL = "/v86/bios/seabios.bin";
-const VGA_BIOS_URL = "/v86/bios/vgabios.bin";
-const FREEDOS_URL = "/VM/freedos722.img";
-const ALPINE_URL = "/VM/alpine-v86-edge-x86.iso";
+import WASM_PATH from "../../v86/build/v86.wasm?url";
+import BIOS_URL from "../../v86/bios/seabios.bin?url";
+import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
+import FREEDOS_URL from "../../VM/freedos722.img?url";
+import ALPINE_URL from "../../VM/alpine_v86_edge_x86.bin?url";
 
 const BIOS_IMAGE = { url: BIOS_URL } as unknown as V86Image;
 const VGA_BIOS_IMAGE = { url: VGA_BIOS_URL } as unknown as V86Image;
 const FREEDOS_IMAGE = { url: FREEDOS_URL } as unknown as V86Image;
-const ALPINE_IMAGE = { url: ALPINE_URL } as unknown as V86Image;
+const ALPINE_IMAGE = { url: ALPINE_URL, async: false } as unknown as V86Image;
 
 const status = ref("Loading...");
 const running = ref(false);
@@ -107,7 +102,7 @@ async function startVm(): Promise<void> {
         serialInput.value = "";
         emulator = new V86({
             wasm_path: WASM_PATH,
-            memory_size: 2 * 1024 * 1024 * 1024,
+            memory_size: 1 * 1024 * 1024 * 1024,
             vga_memory_size: 8 * 1024 * 1024,
             bios: BIOS_IMAGE,
             vga_bios: VGA_BIOS_IMAGE,
@@ -153,7 +148,7 @@ async function startVm(): Promise<void> {
             serialBuffer += char;
             appendSerialLog(char);
 
-            console.log("Received char:", char, "Current data:", serialBuffer);
+            // console.log("Received char:", char, "Current data:", serialBuffer);
 
             const current = stages[stage];
 
@@ -166,8 +161,8 @@ async function startVm(): Promise<void> {
                 emulator?.serial0_send(current.send);
 
                 const log = "Sending: " + current.send.replace(/\n/g, "\\n") + "\n";
-                console.log(log);
-                appendSerialLog(`\n${log}`);
+                // console.log(log);
+                // appendSerialLog(`\n${log}`);
             }
         };
 
