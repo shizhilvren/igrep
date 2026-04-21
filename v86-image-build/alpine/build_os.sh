@@ -22,11 +22,3 @@ docker export "$CONTAINER_NAME" -o "$OUT_ROOTFS_TAR"
 
 # https://github.com/iximiuz/docker-to-linux/issues/19#issuecomment-1242809707
 tar -f "$OUT_ROOTFS_TAR" --delete ".dockerenv" || true
-
-$PYTHON ../../v86/tools/fs2json.py --zstd --out "$OUT_FSJSON" "$OUT_ROOTFS_TAR"
-
-# Note: Not deleting old files here
-mkdir -p "$OUT_ROOTFS_FLAT"
-$PYTHON ../../v86/tools/copy-to-sha256.py --zstd "$OUT_ROOTFS_TAR" "$OUT_ROOTFS_FLAT"
-
-echo "$OUT_ROOTFS_TAR", "$OUT_ROOTFS_FLAT" and "$OUT_FSJSON" created.

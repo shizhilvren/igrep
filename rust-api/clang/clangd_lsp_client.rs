@@ -278,7 +278,6 @@ pub async fn handle_references(
         }
     }
 
-
     Ok(ReferencesData::from(references))
 }
 
@@ -466,6 +465,15 @@ pub fn main(
     let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
     info!("file content read done, start init lsp client");
 
+    info!("LSP tar file dump start");
+    file_index_data_builder.dump_tar(
+        PathBuf::from("lsp_tar").as_path(),
+        &PathBuf::from(&compile_commands_dir)
+            .join("compile_commands.json")
+            .canonicalize()?,
+    )?;
+    info!("LSP tar file dump done");
+
     let client_to_request_sender =
         init_lsp_client(&rt, log_file, compile_commands_dir, debug, jobs)?;
     let (client_to_request_sender, file_index_data_builder) =
@@ -497,7 +505,6 @@ pub fn main(
                     .path()
                     .to_string_lossy()
                     .to_string();
-                let hover_file_path = file_path.clone();
                 let file_lines = file_builder.file_data().lines().to_vec();
                 let multi_progress = Arc::clone(&multi_progress);
 
@@ -529,46 +536,16 @@ pub fn main(
                         )
                         .await?;
                         trace!("semantic tokens get finish: {}", file_path);
-                        if debug{
+                        if debug {
                             show_token(&mut client, &file_path, &semantic_tokens).await?;
                         }
 
-                        let definitions_data = handle_definition(
-                            &mut client,
-                            &hover_file_path,
-                            &semantic_tokens,
-                            Some(&hover_progress_bar),
-                        )
-                        .await?;
-
-                        let references_data = handle_references(
-                            &mut client,
-                            &hover_file_path,
-                            &definitions_data,
-                            Some(&hover_progress_bar),
-                        )
-                        .await?;
-
-                        let hovers = handle_hovers(
-                            &mut client,
-                            &hover_file_path,
-                            &semantic_tokens,
-                            Some(&hover_progress_bar),
-                        )
-                        .await?;
-
-                        Ok::<_, anyhow::Error>((
-                            semantic_tokens,
-                            hovers,
-                            definitions_data,
-                            references_data,
-                        ))
+                        Ok::<_, anyhow::Error>((semantic_tokens,))
                     }
                     .await?;
 
                     hover_progress_bar.finish_and_clear();
-                    let (semantic_tokens, hovers, definitions_data, references_data) =
-                        semantic_and_hovers_result;
+                    let (semantic_tokens,) = semantic_and_hovers_result;
 
                     trace!("semantic tokens get finish: {}", file_path);
 
@@ -577,28 +554,16 @@ pub fn main(
                     let semantic_tokens_data =
                         lsp::data::FileSemanticTokensData::from(semantic_tokens);
 
-                    Ok::<_, anyhow::Error>((
-                        file_index,
-                        semantic_tokens_data,
-                        hovers,
-                        definitions_data,
-                        references_data,
-                    ))
+                    Ok::<_, anyhow::Error>((file_index, semantic_tokens_data))
                 });
             });
 
         let mut data_tokens = Vec::with_capacity(total);
         while let Some(task_result) = join_set.join_next().await {
-            let (file_index, semantic_tokens_data, hovers, definitions_data, references_data) =
+            let (file_index, semantic_tokens_data) =
                 task_result.map_err(|e| anyhow!("semantic token task join fail: {}", e))??;
             progress_bar.set_message(file_index.path().to_string_lossy().to_string());
-            data_tokens.push((
-                file_index,
-                semantic_tokens_data,
-                hovers,
-                definitions_data,
-                references_data,
-            ));
+            data_tokens.push((file_index, semantic_tokens_data));
             progress_bar.inc(1);
         }
         progress_bar.finish_with_message("semantic tokens done");
@@ -609,19 +574,11 @@ pub fn main(
     if debug {
         data_tokens
             .iter()
-            .try_for_each(|(file_index, semantic_tokens, hovers, definitions_data, references_data)| {
+            .try_for_each(|(file_index, semantic_tokens)| {
                 info!(
-                    "文件: {:?}, 语义标记数量: {} , 悬停信息数量: {} 总字节数: {}, definition数量: {}, references数量: {}",
+                    "文件: {:?}, 语义标记数量: {} ",
                     file_index.path(),
-                    semantic_tokens.tokens().len(),
-                    hovers.hovers().len(),
-                    hovers
-                        .hovers()
-                        .iter()
-                        .map(|t| t.hover().len() as u64)
-                        .sum::<u64>(),
-                    definitions_data.definitions().len(),
-                    references_data.definitions().len()
+                    semantic_tokens.tokens().len()
                 );
                 Ok::<(), anyhow::Error>(())
             })?;

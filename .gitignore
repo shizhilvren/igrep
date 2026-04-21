@@ -20,6 +20,8 @@ Cargo.lock
 rust-api/web_api/target
 rust-api/web_api/target/*
 VM
+lsp_tar
+
 
 # Logs
 logs

@@ -48,4 +48,5 @@ tokio = { version = "1.51", features = [
 ] }
 indicatif = "0.17.11"
 console-subscriber = "0.5"
+tar = "0.4.45"
 
