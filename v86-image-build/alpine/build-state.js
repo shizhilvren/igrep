@@ -11,7 +11,7 @@ const __dirname = url.fileURLToPath(new URL(".", import.meta.url));
 
 const V86_ROOT = path.join(__dirname, "../../v86");
 const IMAGE_ROOT = path.join(__dirname, "./");
-const OUTPUT_FILE = "images/alpine-state.bin";
+const OUTPUT_FILE = "images/alpine-state.bin.txt";
 console.log(path.join(V86_ROOT, "build/v86.wasm"))
 
 var emulator = new V86({

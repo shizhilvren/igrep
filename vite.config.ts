@@ -76,5 +76,13 @@ export default defineConfig({
       '@root': fileURLToPath(new URL('./', import.meta.url)),
     },
   },
+  build: {
+    minify: 'terser',
+    terserOptions: {
+      format: {
+        comments: false,
+      },
+    },
+  },
   base: process.env.VITE_BASE_URL || '/',
 })

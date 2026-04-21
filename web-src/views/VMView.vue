@@ -32,16 +32,12 @@ import { V86, type V86Image } from "../../v86";
 import WASM_PATH from "../../v86/build/v86.wasm?url";
 import BIOS_URL from "../../v86/bios/seabios.bin?url";
 import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
-import FREEDOS_URL from "../../VM/freedos722.img?url";
-import ALPINE_URL from "../../VM/alpine_v86_edge_x86.bin?url";
 import FILE_SYSTEM_URL from "../../v86-image-build/alpine/images/alpine-fs.json?url";
-import INIT_STATE from "../../v86-image-build/alpine/images/alpine-state.bin?url";
+import INIT_STATE from "../../v86-image-build/alpine/images/alpine-state.bin.txt?url";
 
 const FILE_SYSTEM_FILE = import.meta.env.BASE_URL + "../../v86-image-build/alpine/images/alpine-rootfs-flat";
 const BIOS_IMAGE = { url: BIOS_URL } as unknown as V86Image;
 const VGA_BIOS_IMAGE = { url: VGA_BIOS_URL } as unknown as V86Image;
-const FREEDOS_IMAGE = { url: FREEDOS_URL } as unknown as V86Image;
-const ALPINE_IMAGE = { url: ALPINE_URL, async: false } as unknown as V86Image;
 const INIT_STATE_IMAGE = { url: INIT_STATE, async: false } as unknown as V86Image;
 
 const status = ref("Loading...");
