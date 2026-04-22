@@ -659,8 +659,7 @@ impl ClangdClient {
                     serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id.id(),
-                    "method": method,
-
+                        "method": method,
                         "params": params
                     }),
                     Some(id),

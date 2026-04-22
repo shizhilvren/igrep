@@ -23,7 +23,7 @@
     "predev": "npm run link-lsp-index",
     "dev": "vite",
     "preview": "vite preview",
-    "build-only": "vite build --minify terser",
+    "build-only": "vite build",
     "build-min": "vite build --minify terser",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",

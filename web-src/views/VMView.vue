@@ -34,6 +34,7 @@ import BIOS_URL from "../../v86/bios/seabios.bin?url";
 import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
 import FILE_SYSTEM_URL from "../../v86-image-build/alpine/images/alpine-fs.json?url";
 import INIT_STATE from "../../v86-image-build/alpine/images/alpine-state.bin.txt?url";
+import { LSPClient } from "@/utils/lsp_client";
 
 const FILE_SYSTEM_FILE = import.meta.env.BASE_URL + "../../v86-image-build/alpine/images/alpine-rootfs-flat";
 const BIOS_IMAGE = { url: BIOS_URL } as unknown as V86Image;
@@ -51,6 +52,8 @@ let disposed = false;
 let emulator: V86 | null = null;
 let serialBuffer = "";
 let serialListener: ((byte: number) => void) | null = null;
+
+
 
 function appendSerialLog(text: string): void {
     serialLog.value = `${serialLog.value}${text}`.slice(-MAX_SERIAL_LOG_CHARS);
@@ -100,7 +103,7 @@ async function startVm(): Promise<void> {
         serialBuffer = "";
         serialLog.value = "";
         serialInput.value = "";
-        emulator = new V86({
+        const instance = new V86({
             wasm_path: WASM_PATH,
             bios: BIOS_IMAGE,
             vga_bios: VGA_BIOS_IMAGE,
@@ -124,6 +127,9 @@ async function startVm(): Promise<void> {
             },
             initial_state: INIT_STATE_IMAGE,
         });
+        let client = new LSPClient(instance);
+        const isReady = await client.waitForEmulatorReady();
+        emulator = instance;
 
         if (disposed && emulator) {
             void emulator.stop();
@@ -132,48 +138,37 @@ async function startVm(): Promise<void> {
         }
 
         running.value = true;
+        status.value = "Waiting for VM readiness...";
+
+
+        console.log("VM readiness:", isReady);
+        if (!isReady) {
+            if (emulator === instance) {
+                void instance.stop();
+                emulator = null;
+                running.value = false;
+                status.value = "VM readiness timeout";
+            }
+            return;
+        }
+
+        if (disposed || emulator !== instance) {
+            return;
+        }
+
         status.value = "Running FreeDOS";
 
-        const stages = [
-            {
-                test: "virt-custom login: ",
-                send: "root\n",
-            },
-            {
-                test: "virt-custom:~# \x1b[6n",
-                send: "clangd --version\n",
-            },
-        ];
-        let stage = 0;
-
         serialListener = (byte: number) => {
+            client.update(byte);
             const char = String.fromCharCode(byte);
-            if (char === "\r") {
-                return;
-            }
-
-            serialBuffer += char;
             appendSerialLog(char);
-
-            // console.log("Received char:", char, "Current data:", serialBuffer);
-
-            const current = stages[stage];
-
-            if (!current) {
-                return;
-            }
-
-            if (serialBuffer.endsWith(current.test)) {
-                stage++;
-                emulator?.serial0_send(current.send);
-
-                const log = "Sending: " + current.send.replace(/\n/g, "\\n") + "\n";
-                // console.log(log);
-                // appendSerialLog(`\n${log}`);
-            }
         };
 
-        emulator.add_listener("serial0-output-byte", serialListener);
+        instance.add_listener("serial0-output-byte", serialListener);
+        instance.serial0_send("\r\n");
+        client.start();
+        console.log("VM started");
+
     } catch (error) {
         running.value = false;
         status.value = "Failed to start VM";

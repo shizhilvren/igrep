@@ -53,10 +53,12 @@ emulator.add_listener("serial0-output-byte", function (byte) {
         if (num == 0) {
             num = num + 1;
             emulator.serial0_send("which clangd\n");
-        } else if (num == 1) {
-            num = num + 1;
-            emulator.serial0_send("clangd\n");
-        } else {
+        }
+        // else if (num == 1) {
+        //     num = num + 1;
+        //     emulator.serial0_send("clangd\n");
+        // }
+        else {
             booted = true;
             console.log(serial_text)
             // emulator.serial0_send("sync;echo 3 >/proc/sys/vm/drop_caches\n");
