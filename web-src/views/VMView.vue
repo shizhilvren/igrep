@@ -167,6 +167,7 @@ async function startVm(): Promise<void> {
         instance.add_listener("serial0-output-byte", serialListener);
         instance.serial0_send("\r\n");
         client.start();
+
         console.log("VM started");
 
     } catch (error) {
