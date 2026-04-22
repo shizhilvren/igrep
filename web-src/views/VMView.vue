@@ -170,6 +170,9 @@ async function startVm(): Promise<void> {
 
         console.log("VM started");
 
+        await client.isIndexDone();
+        console.log("all index done");
+
     } catch (error) {
         running.value = false;
         status.value = "Failed to start VM";

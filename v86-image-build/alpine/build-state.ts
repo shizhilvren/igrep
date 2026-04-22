@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import url from "node:url";
 import { V86 } from "../../v86/build/libv86.mjs";
+import { LSPClient } from "../../web-src/utils/lsp_client.ts"
 
 console.log("Don't forget to run `make all` before running this script");
 
@@ -35,43 +36,44 @@ var emulator = new V86({
 
 });
 
-console.log("Now booting, please stand by ...");
+
 
 let serial_text = "";
 let booted = false;
 let num = 0;
 
+let client = new LSPClient(emulator);
+
 
 emulator.add_listener("serial0-output-byte", function (byte) {
     const c = String.fromCharCode(byte);
-    //process.stdout.write(c);
 
     serial_text += c;
-    console.log(serial_text)
-
-    if (!booted && (serial_text.endsWith("(none):~# ") || serial_text.endsWith("stdin/stdout"))) {
-        if (num == 0) {
-            num = num + 1;
-            emulator.serial0_send("which clangd\n");
-        }
-        // else if (num == 1) {
-        //     num = num + 1;
-        //     emulator.serial0_send("clangd\n");
-        // }
-        else {
-            booted = true;
-            console.log(serial_text)
-            // emulator.serial0_send("sync;echo 3 >/proc/sys/vm/drop_caches\n");
-
-            setTimeout(async function () {
-                const s = await emulator.save_state();
-
-                fs.writeFile(OUTPUT_FILE, new Uint8Array(s), function (e) {
-                    if (e) throw e;
-                    console.log("Saved as " + OUTPUT_FILE);
-                    emulator.destroy();
-                });
-            }, 10 * 1000);
-        }
+    // console.log(serial_text)
+    if (!booted && serial_text.endsWith("(none):~# ")) {
+        booted = true
+        console.log("booted")
+        console.log("LSP start")
+        emulator.serial0_send("\r\n");
+        client.start();
+        console.log("wait lsp index done")
+    }
+    if (booted) {
+        client.update(byte);
     }
 });
+console.log("booting...")
+
+
+await client.isIndexDone();
+console.log("lsp index done")
+setTimeout(async function () {
+    emulator.serial0_send("sync;echo 3 >/proc/sys/vm/drop_caches\n");
+    const s = await emulator.save_state();
+
+    fs.writeFile(OUTPUT_FILE, new Uint8Array(s), function (e) {
+        if (e) throw e;
+        console.log("Saved as " + OUTPUT_FILE);
+        emulator.destroy();
+    });
+}, 10 * 1000);
