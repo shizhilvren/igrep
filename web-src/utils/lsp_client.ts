@@ -1,8 +1,7 @@
 // import { Uri } from "monaco-editor";
 import type { V86 } from "../../v86/v86";
 
-
-export class ResponseLog {
+class ResponseLog {
     private status: 'header' | "split0" | 'body' = 'header';
     private len: number = 0;
     private client: LSPClient;
@@ -81,8 +80,9 @@ export class LSPClient {
 
     constructor(v86: V86) {
         this.v86 = v86;
+        this.buf = '';
     }
-    private buf: string = '';
+    protected buf: string = '';
     private v86: V86;
     private id: number = 0;
     private response_log: ResponseLog = new ResponseLog(this);
@@ -165,7 +165,7 @@ export class LSPClient {
         this.notify("initialized", {})
     }
 
-    didOpen(file_path: string, content: string[]) {
+    public didOpen(file_path: string, content: string[]) {
         const method = "textDocument/didOpen";
         let uri = "file://" + file_path;
         const content_str = content.join("\n");
@@ -180,7 +180,7 @@ export class LSPClient {
         this.notify(method, params);
     }
 
-    didClose(file_path: string) {
+    public didClose(file_path: string) {
         const method = "textDocument/didClose";
         let uri = "file://" + file_path;
         const params = {
@@ -190,27 +190,37 @@ export class LSPClient {
         };
         this.notify(method, params);
     }
-    request(method: string, params: Record<string, unknown>): void {
+
+    public hover(file_path: string, line: number, character: number): number {
+        const method = "textDocument/hover";
+        let uri = "file://" + file_path;
+        const params = {
+            textDocument: {
+                uri: uri.toString(),
+            },
+            position: {
+                line,
+                character
+            }
+        };
+        return this.request(method, params)
+    }
+
+    request(method: string, params: Record<string, unknown>): number {
         const id = this.id++;
         const json = { id, jsonrpc: "2.0", method, params };
         const str = JSON.stringify(json);
         const len = new TextEncoder().encode(str).length;
         const header = `Content-Length: ${len}`;
 
-        // 使用 serial_send_bytes 发送 header + \r\n
         const headerBytes = new TextEncoder().encode(header);
-        this.v86.serial_send_bytes(0, headerBytes);
-
-        // 发送 \r\n\r\n 分隔符
-        this.v86.serial_send_bytes(0, LSPClient.HEADER_SEPARATOR_BYTES);
-
-        // 发送 JSON body
         const bodyBytes = new TextEncoder().encode(str);
-        this.v86.serial_send_bytes(0, bodyBytes);
 
-        // this.v86.serial_send_bytes(0, headerBytes);
+        this.v86.serial_send_bytes(0, headerBytes);
+        this.v86.serial_send_bytes(0, LSPClient.HEADER_SEPARATOR_BYTES);
+        this.v86.serial_send_bytes(0, bodyBytes);
         this.v86.serial_send_bytes(0, new Uint8Array([10]));
-        // this.v86.serial_send_bytes(0, bodyBytes);
+        return id;
     }
 
     resopnse(id: number, params: JSON | null) {

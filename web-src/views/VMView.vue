@@ -3,17 +3,10 @@
         <header class="vm-toolbar">
             <button class="vm-btn" :disabled="running" @click="startVm">Start</button>
             <button class="vm-btn" :disabled="!running" @click="stopVm">Stop</button>
-            
+
             <div class="vm-scale-control">
                 <label for="scale-slider">Scale:</label>
-                <el-slider 
-                    id="scale-slider"
-                    v-model="scale" 
-                    :min="0.5" 
-                    :max="3" 
-                    :step="0.1"
-                    class="vm-scale-slider"
-                />
+                <el-slider id="scale-slider" v-model="scale" :min="0.5" :max="3" :step="0.1" class="vm-scale-slider" />
                 <span class="vm-scale-value">{{ (scale * 100).toFixed(0) }}%</span>
             </div>
 
@@ -42,18 +35,8 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { V86, type V86Image } from "../../v86";
 import { ElSlider } from 'element-plus';
+import { startVM } from "@/utils/clang_lsp";
 
-import WASM_PATH from "../../v86/build/v86.wasm?url";
-import BIOS_URL from "../../v86/bios/seabios.bin?url";
-import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
-import FILE_SYSTEM_URL from "../../v86-image-build/alpine/images/alpine-fs.json?url";
-import INIT_STATE from "../../v86-image-build/alpine/images/alpine-state.bin.txt?url";
-import { LSPClient } from "@/utils/lsp_client";
-
-const FILE_SYSTEM_FILE = import.meta.env.BASE_URL + "../../v86-image-build/alpine/images/alpine-rootfs-flat";
-const BIOS_IMAGE = { url: BIOS_URL } as unknown as V86Image;
-const VGA_BIOS_IMAGE = { url: VGA_BIOS_URL } as unknown as V86Image;
-const INIT_STATE_IMAGE = { url: INIT_STATE, async: false } as unknown as V86Image;
 
 const status = ref("Loading...");
 const running = ref(false);
@@ -117,29 +100,10 @@ async function startVm(): Promise<void> {
         serialBuffer = "";
         serialLog.value = "";
         serialInput.value = "";
-        const instance = new V86({
-            wasm_path: WASM_PATH,
-            bios: BIOS_IMAGE,
-            vga_bios: VGA_BIOS_IMAGE,
-            autostart: true,
-            memory_size: 1 * 1024 * 1024 * 1024,
-            vga_memory_size: 8 * 1024 * 1024,
-            network_relay_url: "<UNUSED>",
-            bzimage_initrd_from_filesystem: true,
-            cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable init_on_free=on",
-            disable_keyboard: false,
-            disable_mouse: false,
-            serial_console: { type: "none" },
-            virtio_console: { type: "none" },
-            screen_container: target,
-            filesystem: {
-                baseurl: FILE_SYSTEM_FILE,
-                basefs: FILE_SYSTEM_URL,
-            },
-            initial_state: INIT_STATE_IMAGE,
-        });
-        let client = new LSPClient(instance);
-        const isReady = await client.waitForEmulatorReady();
+        const vm = await startVM(target)
+        let client = vm.client;
+        const instance = vm.instance;
+        const isReady = vm.isReady;
         emulator = instance;
 
         if (disposed && emulator) {
@@ -235,7 +199,7 @@ onUnmounted(() => {
     border-radius: 10px;
     background: linear-gradient(90deg, #1f2833, #2e3b4e);
     /* 修复：强制设置高度，防止 flex 布局下高度塌陷 */
-    height: 60px; 
+    height: 60px;
     box-sizing: border-box;
 }
 
@@ -257,9 +221,11 @@ onUnmounted(() => {
 :deep(.el-slider__runway) {
     background-color: #4f627a;
 }
+
 :deep(.el-slider__bar) {
     background-color: #409eff;
 }
+
 :deep(.el-slider__button) {
     border-color: #409eff;
 }

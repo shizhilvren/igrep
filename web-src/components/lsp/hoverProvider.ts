@@ -1,6 +1,6 @@
 import * as monaco from 'monaco-editor'
 import type { HoverData } from './file'
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 
 function toMonacoRange(item: HoverData): monaco.Range {
     return new monaco.Range(
@@ -11,28 +11,21 @@ function toMonacoRange(item: HoverData): monaco.Range {
     )
 }
 
-export function registerHoverProvider(language: string, hoverData: ComputedRef<Map<string, HoverData[] | undefined>>): monaco.IDisposable {
+export function registerHoverProvider(language: string, hover: (file_path: string, line: number, character: number, resolve: (any: unknown) => void) => void): monaco.IDisposable {
 
     return monaco.languages.registerHoverProvider(language, {
-        provideHover(model, position) {
+        async provideHover(model, position) {
             const uri = model.uri
-            const hovers = hoverData.value.get(uri.toString())
-            const line = position.lineNumber - 1
-            const char = position.column - 1
-            const hover = hovers?.find((e) => {
-                if (e.start.line == line && e.start.character <= char && char < e.end.character) {
-                    return true
-                } else {
-                    return false
-                }
-            });
-            if (!hover) {
-                return null
-            }
-
+            const line = position.lineNumber
+            const char = position.column
+            const wait = new Promise((resolve) => {
+                hover(uri.fsPath, line, char, resolve)
+            })
+            const id = await wait;
+            console.debug("hover id: ", id)
             return {
-                range: toMonacoRange(hover),
-                contents: [{ value: hover.hover }],
+                range: undefined,
+                contents: [{ value: "hover.hover " }],
             }
         },
     })

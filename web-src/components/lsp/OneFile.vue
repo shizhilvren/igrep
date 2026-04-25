@@ -8,7 +8,7 @@
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import loader from '@monaco-editor/loader'
 import * as monaco from 'monaco-editor'
 import { registerHoverProvider } from '@/components/lsp/hoverProvider'
@@ -17,6 +17,7 @@ import { registerReferenceProvider } from '@/components/lsp/referenceProvider'
 import { applySemanticHighlight } from '@/components/lsp/semanticHighlighter'
 import { FileContent, SemanticTokens, HoverData, DefinitionData, ReferenceData, Files } from '@/components/lsp/file'
 import { ElNotification } from 'element-plus'
+import type { LSPClient } from '@/utils/lsp_client'
 
 
 const el = ref<HTMLElement | null>(null)
@@ -35,6 +36,7 @@ const createdModelUris = new Set<string>()
 const emit = defineEmits<{
     'addFileToModel': [file_path: string]
     'changeFile': [file_path: string]
+    'hover': [file_path: string, line: number, character: number, resolve: (val: unknown) => void]
 }>()
 
 
@@ -115,7 +117,10 @@ function updateSemanticHighlight(semantic_tokens: SemanticTokens | undefined) {
 
 function updateHoverProvider() {
     hoverDispose?.dispose()
-    hoverDispose = registerHoverProvider("cpp", hovers)
+    const hover = function (file_path: string, line: number, character: number, resolve: (val: unknown) => void) {
+        emit("hover", file_path, line, character, resolve)
+    }
+    hoverDispose = registerHoverProvider("cpp", hover)
 }
 
 function updateDefinitionProvider() {

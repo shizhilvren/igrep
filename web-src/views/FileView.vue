@@ -1,7 +1,4 @@
 <template>
-    <el-button type="primary" style="margin-left: 16px" @click="drawer2 = true">
-        with footer
-    </el-button>
     <main class="file-view">
         <div style="padding-left: 10px;">
             <FilePathBar v-bind="{ filePath: normalizedPath }" />
@@ -15,30 +12,24 @@
             }" />
             <OneFile v-if="is_file" class="file-editor" v-bind="{
                 files: files,
-                filePath: normalizedPath
-            }" @add-file-to-model="addFileToModel" @change-file="changeFile" />
+                filePath: normalizedPath,
+            }" @add-file-to-model="addFileToModel" @change-file="changeFile" @hover="hover"/>
         </div>
     </main>
-
-
-    <el-drawer v-model="drawer2" :direction="direction">
-        <template #default>
-            <VMView></VMView>
-        </template>
-    </el-drawer>
 </template>
 
 <script setup lang="ts">
 import { DefinitionData, DefinitionLocationModel, FileContent, Files, HoverData, ReferenceData, ReferenceLocationModel, SemanticToken, SemanticTokens } from '@/components/lsp/file'
 import FilePathBar from '@/components/lsp/FilePathBar.vue';
 import OneFile from '@/components/lsp/OneFile.vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, toRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import * as igrep from 'igrep';
 import { fetchFileData } from "@/utils/utils"
 import DirTree from '@/components/lsp/DirTree.vue';
-import type { DrawerProps } from 'element-plus'
-import VMView from './VMView.vue';
+import { startVMandlisten } from '@/utils/clang_lsp';
+import type { V86 } from '../../v86/v86';
+import type { LSPClient } from '@/utils/lsp_client';
 
 const router = useRouter();
 
@@ -55,9 +46,20 @@ const is_dir = ref(false)
 const is_file = ref(false)
 const loading = ref(false)
 const files = ref<Files>(new Files())
-const direction = ref<DrawerProps['direction']>('rtl')
-const drawer2 = ref(false)
+const vm = ref<{
+    isReady: boolean;
+    instance: V86;
+} | undefined>(undefined)
 
+const client = ref<LSPClient | undefined>(undefined)
+
+
+onMounted(async () => {
+    const ans = await startVMandlisten();
+    vm.value = { instance: ans.instance, isReady: ans.isReady }
+    client.value = ans.client
+    console.log("lsp server start", vm.value.isReady);
+});
 
 function changeFile(file_path: string) {
     console.log("change file", file_path)
@@ -66,6 +68,12 @@ function changeFile(file_path: string) {
     })
     router.push({ name: "files", params: { filePath: file_path_array } })
     // await refreshDirData(file_path_array)
+}
+
+function hover(file_path: string, line: number, character: number, resolve: (val: unknown) => void) {
+    const id = client.value?.hover(file_path, line, character)
+    resolve(id)
+
 }
 
 async function addFileToModel(file_path: string) {
@@ -85,14 +93,14 @@ async function addFileToModel(file_path: string) {
                 files.value.addFileContent(file_path_array, file)
                 console.log("files", files)
 
-                const hoverRawData = await get_hover_data(file_path_array)
-                const hovers = parseHoverData(hoverRawData)
-                const definitionRawData = await get_definition_data(file_path_array)
-                const defititions = parseDefinitionData(definitionRawData)
+                // const hoverRawData = await get_hover_data(file_path_array)
+                // const hovers = parseHoverData(hoverRawData)
+                // const definitionRawData = await get_definition_data(file_path_array)
+                // const defititions = parseDefinitionData(definitionRawData)
                 // const referencesRawData = await get_references_data(file_path_array)
                 // const references = parseReferencesData(referencesRawData)
-                files.value.getFileContent(file_path_array)?.setHoverData(hovers)
-                files.value.getFileContent(file_path_array)?.setDefinitionData(defititions)
+                // files.value.getFileContent(file_path_array)?.setHoverData(hovers)
+                // files.value.getFileContent(file_path_array)?.setDefinitionData(defititions)
                 // files.value.getFileContent(file_path_array)?.setReferenceData(references)
             }
         } catch (e) {
@@ -147,15 +155,15 @@ async function refreshDirData(basePath: string[]) {
 
             loading.value = false
 
-            const hoverRawData = await get_hover_data(basePath)
-            const hovers = parseHoverData(hoverRawData)
-            const definitionRawData = await get_definition_data(basePath)
-            const defititions = parseDefinitionData(definitionRawData)
-            const referencesRawData = await get_references_data(basePath)
-            const references = parseReferencesData(referencesRawData)
-            files.value.getFileContent(basePath)?.setHoverData(hovers)
-            files.value.getFileContent(basePath)?.setDefinitionData(defititions)
-            files.value.getFileContent(basePath)?.setReferenceData(references)
+            // const hoverRawData = await get_hover_data(basePath)
+            // const hovers = parseHoverData(hoverRawData)
+            // const definitionRawData = await get_definition_data(basePath)
+            // const defititions = parseDefinitionData(definitionRawData)
+            // const referencesRawData = await get_references_data(basePath)
+            // const references = parseReferencesData(referencesRawData)
+            // files.value.getFileContent(basePath)?.setHoverData(hovers)
+            // files.value.getFileContent(basePath)?.setDefinitionData(defititions)
+            // files.value.getFileContent(basePath)?.setReferenceData(references)
             // console.log(code.value)
         }
     } catch (e) {
@@ -295,26 +303,26 @@ async function get_tree_data(path: string[]) {
     return data
 }
 
-async function get_hover_data(path: string[]) {
-    let path_str = path.join("/");
-    let path_index = new igrep.PathIndex(path_str);
-    let data = await fetchFileData(path_index.path_str("lsp-index") + "/hover.data");
-    return data
-}
+// async function get_hover_data(path: string[]) {
+//     let path_str = path.join("/");
+//     let path_index = new igrep.PathIndex(path_str);
+//     let data = await fetchFileData(path_index.path_str("lsp-index") + "/hover.data");
+//     return data
+// }
 
-async function get_definition_data(path: string[]) {
-    let path_str = path.join("/");
-    let path_index = new igrep.PathIndex(path_str);
-    let data = await fetchFileData(path_index.path_str("lsp-index") + "/definition.data");
-    return data
-}
+// async function get_definition_data(path: string[]) {
+//     let path_str = path.join("/");
+//     let path_index = new igrep.PathIndex(path_str);
+//     let data = await fetchFileData(path_index.path_str("lsp-index") + "/definition.data");
+//     return data
+// }
 
-async function get_references_data(path: string[]) {
-    let path_str = path.join("/");
-    let path_index = new igrep.PathIndex(path_str);
-    let data = await fetchFileData(path_index.path_str("lsp-index") + "/references.data");
-    return data
-}
+// async function get_references_data(path: string[]) {
+//     let path_str = path.join("/");
+//     let path_index = new igrep.PathIndex(path_str);
+//     let data = await fetchFileData(path_index.path_str("lsp-index") + "/references.data");
+//     return data
+// }
 
 class DirData {
     readonly dirs: string[]
