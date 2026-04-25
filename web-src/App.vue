@@ -16,7 +16,10 @@ import HelloWorld from './components/HelloWorld.vue'
       </nav>
     </div>
   </header> -->
-
+  <div class="slider-demo-block">
+    <span class="demonstration">Default value</span>
+    <el-slider v-model="value1" />
+  </div>
   <p><strong>Current route path:</strong> {{ $route.fullPath }}</p>
   <nav>
     <RouterLink to="/search">Go to search</RouterLink>
@@ -40,6 +43,12 @@ import HelloWorld from './components/HelloWorld.vue'
   <!-- <RouterView /> -->
 </template>
 
+<script lang="ts">
+
+import { ref } from 'vue';
+const value1 = ref(2);
+
+</script>
 <style scoped>
 .app-main {
   flex: 1;

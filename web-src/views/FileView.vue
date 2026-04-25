@@ -1,4 +1,7 @@
 <template>
+    <el-button type="primary" style="margin-left: 16px" @click="drawer2 = true">
+        with footer
+    </el-button>
     <main class="file-view">
         <div style="padding-left: 10px;">
             <FilePathBar v-bind="{ filePath: normalizedPath }" />
@@ -16,6 +19,13 @@
             }" @add-file-to-model="addFileToModel" @change-file="changeFile" />
         </div>
     </main>
+
+
+    <el-drawer v-model="drawer2" :direction="direction">
+        <template #default>
+            <VMView></VMView>
+        </template>
+    </el-drawer>
 </template>
 
 <script setup lang="ts">
@@ -27,6 +37,8 @@ import { useRouter } from 'vue-router';
 import * as igrep from 'igrep';
 import { fetchFileData } from "@/utils/utils"
 import DirTree from '@/components/lsp/DirTree.vue';
+import type { DrawerProps } from 'element-plus'
+import VMView from './VMView.vue';
 
 const router = useRouter();
 
@@ -43,7 +55,8 @@ const is_dir = ref(false)
 const is_file = ref(false)
 const loading = ref(false)
 const files = ref<Files>(new Files())
-
+const direction = ref<DrawerProps['direction']>('rtl')
+const drawer2 = ref(false)
 
 
 function changeFile(file_path: string) {

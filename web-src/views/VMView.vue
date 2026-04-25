@@ -3,7 +3,20 @@
         <header class="vm-toolbar">
             <button class="vm-btn" :disabled="running" @click="startVm">Start</button>
             <button class="vm-btn" :disabled="!running" @click="stopVm">Stop</button>
-            <button class="vm-btn" :disabled="!running" @click="restartVm">Restart</button>
+            
+            <div class="vm-scale-control">
+                <label for="scale-slider">Scale:</label>
+                <el-slider 
+                    id="scale-slider"
+                    v-model="scale" 
+                    :min="0.5" 
+                    :max="3" 
+                    :step="0.1"
+                    class="vm-scale-slider"
+                />
+                <span class="vm-scale-value">{{ (scale * 100).toFixed(0) }}%</span>
+            </div>
+
             <span class="vm-status">{{ status }}</span>
         </header>
 
@@ -18,7 +31,7 @@
             <pre class="vm-serial-log">{{ serialLog }}</pre>
         </section>
 
-        <section class="vm-stage" ref="screenContainer">
+        <section class="vm-stage" ref="screenContainer" :style="{ transform: `scale(${scale})` }">
             <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
             <canvas style="display: none"></canvas>
         </section>
@@ -28,6 +41,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { V86, type V86Image } from "../../v86";
+import { ElSlider } from 'element-plus';
 
 import WASM_PATH from "../../v86/build/v86.wasm?url";
 import BIOS_URL from "../../v86/bios/seabios.bin?url";
@@ -48,12 +62,12 @@ const serialLog = ref("");
 const serialInput = ref("");
 const MAX_SERIAL_LOG_CHARS = 20000;
 
+const scale = ref(2);
+
 let disposed = false;
 let emulator: V86 | null = null;
 let serialBuffer = "";
 let serialListener: ((byte: number) => void) | null = null;
-
-
 
 function appendSerialLog(text: string): void {
     serialLog.value = `${serialLog.value}${text}`.slice(-MAX_SERIAL_LOG_CHARS);
@@ -113,14 +127,11 @@ async function startVm(): Promise<void> {
             network_relay_url: "<UNUSED>",
             bzimage_initrd_from_filesystem: true,
             cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable init_on_free=on",
-            // fda: FREEDOS_IMAGE,
-            // cdrom: ALPINE_IMAGE,
             disable_keyboard: false,
             disable_mouse: false,
             serial_console: { type: "none" },
             virtio_console: { type: "none" },
             screen_container: target,
-            // cmdline: "tsc=reliable mitigations=off random.trust_cpu=on",
             filesystem: {
                 baseurl: FILE_SYSTEM_FILE,
                 basefs: FILE_SYSTEM_URL,
@@ -134,12 +145,13 @@ async function startVm(): Promise<void> {
         if (disposed && emulator) {
             void emulator.stop();
             emulator = null;
+            running.value = false;
+            status.value = "VM readiness timeout";
             return;
         }
 
         running.value = true;
         status.value = "Waiting for VM readiness...";
-
 
         console.log("VM readiness:", isReady);
         if (!isReady) {
@@ -147,7 +159,6 @@ async function startVm(): Promise<void> {
                 void instance.stop();
                 emulator = null;
                 running.value = false;
-                status.value = "VM readiness timeout";
             }
             return;
         }
@@ -196,15 +207,6 @@ function stopVm(): void {
     status.value = "Stopped";
 }
 
-function restartVm(): void {
-    if (emulator) {
-        emulator.restart();
-        status.value = "Restarted";
-        return;
-    }
-    void startVm();
-}
-
 onMounted(() => {
     disposed = false;
     void startVm();
@@ -232,6 +234,39 @@ onUnmounted(() => {
     padding: 10px 12px;
     border-radius: 10px;
     background: linear-gradient(90deg, #1f2833, #2e3b4e);
+    /* 修复：强制设置高度，防止 flex 布局下高度塌陷 */
+    height: 60px; 
+    box-sizing: border-box;
+}
+
+.vm-scale-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #c8d3e0;
+    font-size: 13px;
+}
+
+/* 修复：设置滑动条宽度和边距，确保显示且美观 */
+.vm-scale-slider {
+    width: 150px;
+    margin: 0 10px;
+}
+
+/* 深度选择器：适配深色主题 */
+:deep(.el-slider__runway) {
+    background-color: #4f627a;
+}
+:deep(.el-slider__bar) {
+    background-color: #409eff;
+}
+:deep(.el-slider__button) {
+    border-color: #409eff;
+}
+
+.vm-scale-value {
+    min-width: 35px;
+    text-align: right;
 }
 
 .vm-btn {
@@ -255,6 +290,7 @@ onUnmounted(() => {
 }
 
 .vm-stage {
+    transform-origin: top left;
     flex: 1;
     min-height: 0;
     border-radius: 10px;
