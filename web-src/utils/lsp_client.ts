@@ -7,6 +7,7 @@ class ResponseLog {
     private client: LSPClient;
     private index_done: Promise<void>;
     private index_done_resolve: ((value: void | PromiseLike<void>) => void) | null = null;
+    private id_resolve: Map<number, (val: JSON | null) => void> = new Map()
     constructor(client: LSPClient) {
         this.client = client;
         this.index_done = new Promise((resolve) => {
@@ -15,6 +16,14 @@ class ResponseLog {
     }
     isBody() {
         return this.status === 'body'
+    }
+    public setResolve(id: number, resolve: (val: JSON | null) => void) {
+        this.id_resolve.set(id, resolve)
+    }
+    public removeResolve(id: number) {
+        const val = this.id_resolve.get(id)
+        this.id_resolve.delete(id)
+        return val
     }
     public isIndexDone() {
         return this.index_done
@@ -61,6 +70,12 @@ class ResponseLog {
                             const fun = this.index_done_resolve!
                             fun();
                         }
+                    }
+                } 
+                else if (have_id && have_result && !have_method) {
+                    const resolve = this.removeResolve(json.id)
+                    if (resolve) {
+                        resolve(json.result)
                     }
                 }
                 const ret = buf.substring(this.len, buf.length)
@@ -191,7 +206,7 @@ export class LSPClient {
         this.notify(method, params);
     }
 
-    public hover(file_path: string, line: number, character: number): number {
+    public hover(file_path: string, line: number, character: number, resolve: (val: JSON | null) => void): number {
         const method = "textDocument/hover";
         let uri = "file://" + file_path;
         const params = {
@@ -203,11 +218,14 @@ export class LSPClient {
                 character
             }
         };
-        return this.request(method, params)
+        return this.request(method, params, resolve)
     }
 
-    request(method: string, params: Record<string, unknown>): number {
+    request(method: string, params: Record<string, unknown>, resolve: ((val: JSON | null) => void) | undefined): number {
         const id = this.id++;
+        if (resolve) {
+            this.response_log.setResolve(id, resolve)
+        }
         const json = { id, jsonrpc: "2.0", method, params };
         const str = JSON.stringify(json);
         const len = new TextEncoder().encode(str).length;

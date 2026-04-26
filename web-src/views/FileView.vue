@@ -13,7 +13,8 @@
             <OneFile v-if="is_file" class="file-editor" v-bind="{
                 files: files,
                 filePath: normalizedPath,
-            }" @add-file-to-model="addFileToModel" @change-file="changeFile" @hover="hover"/>
+            }" @add-file-to-model="addFileToModel" @change-file="changeFile" @hover="hover" @did-open="didOpen"
+                @did-close="didClose" />
         </div>
     </main>
 </template>
@@ -53,6 +54,10 @@ const vm = ref<{
 
 const client = ref<LSPClient | undefined>(undefined)
 
+const VMStartDone = computed(() => {
+    return client.value !== undefined
+})
+
 
 onMounted(async () => {
     const ans = await startVMandlisten();
@@ -60,6 +65,23 @@ onMounted(async () => {
     client.value = ans.client
     console.log("lsp server start", vm.value.isReady);
 });
+
+async function waitVMStart() {
+    const wait = new Promise((resolve: (_: void) => void) => {
+        if (VMStartDone.value) {
+            resolve()
+        } else {
+            const stop = watch(
+                () => VMStartDone.value,
+                (_) => {
+                    resolve()
+                },
+                { deep: true },
+            )
+        }
+    })
+    return wait
+}
 
 function changeFile(file_path: string) {
     console.log("change file", file_path)
@@ -70,10 +92,19 @@ function changeFile(file_path: string) {
     // await refreshDirData(file_path_array)
 }
 
-function hover(file_path: string, line: number, character: number, resolve: (val: unknown) => void) {
-    const id = client.value?.hover(file_path, line, character)
-    resolve(id)
+async function hover(file_path: string, line: number, character: number, resolve: (val: unknown) => void) {
+    await waitVMStart()
+    client.value?.hover(file_path, line, character, resolve)
+}
 
+async function didOpen(file_path: string, content: string[]) {
+    await waitVMStart()
+    client.value?.didOpen(file_path, content)
+}
+
+async function didClose(file_path: string) {
+    await waitVMStart()
+    client.value?.didClose(file_path)
 }
 
 async function addFileToModel(file_path: string) {

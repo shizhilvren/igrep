@@ -11,21 +11,32 @@ function toMonacoRange(item: HoverData): monaco.Range {
     )
 }
 
-export function registerHoverProvider(language: string, hover: (file_path: string, line: number, character: number, resolve: (any: unknown) => void) => void): monaco.IDisposable {
+export function registerHoverProvider(language: string, hover: (file_path: string, line: number, character: number, resolve: (any: JSON | null) => void) => void): monaco.IDisposable {
 
     return monaco.languages.registerHoverProvider(language, {
         async provideHover(model, position) {
             const uri = model.uri
-            const line = position.lineNumber
-            const char = position.column
-            const wait = new Promise((resolve) => {
-                hover(uri.fsPath, line, char, resolve)
+            const line = position.lineNumber - 1
+            const char = position.column - 1
+            const wait = new Promise((resolve: (val: JSON | null) => void) => {
+                hover(uri.path, line, char, resolve)
             })
-            const id = await wait;
-            console.debug("hover id: ", id)
-            return {
-                range: undefined,
-                contents: [{ value: "hover.hover " }],
+            const result = await wait;
+            console.debug("hover id: ", result)
+            if (result) {
+                return {
+                    range: {
+                        startLineNumber: result.range.start.line + 1,
+                        startColumn: result.range.start.character + 1,
+                        endLineNumber: result.range.start.line + 1,
+                        endColumn: result.range.start.character + 1
+                    },
+                    contents: [{
+                        value: result.contents.value
+                    }],
+                }
+            } else {
+                return undefined
             }
         },
     })

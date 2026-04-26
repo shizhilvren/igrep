@@ -37,6 +37,8 @@ const emit = defineEmits<{
     'addFileToModel': [file_path: string]
     'changeFile': [file_path: string]
     'hover': [file_path: string, line: number, character: number, resolve: (val: unknown) => void]
+    'didOpen': [file_path: string, lines: string[]]
+    'didClose': [file_path: string]
 }>()
 
 
@@ -205,6 +207,7 @@ function toModelUri(filePath: string[] | undefined): monaco.Uri {
 
 function ensureFileModel(code: string[], language: string, file_uri: monaco.Uri) {
 
+    emit("didOpen", file_uri.path, code)
     if (!editor) {
         return
     }
@@ -332,10 +335,11 @@ watch(
 
 watch(
     code,
-    (new_val) => {
+    (new_val, old_val) => {
         if (!editor || !new_val.code || !new_val.language) {
             return
         }
+        emit("didClose", file_uri.value.toString().substring("file://".length, -1))
         ensureFileModel(new_val.code, new_val.language, new_val.uri.value)
         // updateDefinitionProvider()
         // updateSemanticHighlight()
