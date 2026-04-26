@@ -4,7 +4,8 @@ use lsp_types::Hover;
 use rayon::iter::*;
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    fs,
+    path::{Path, PathBuf},
 };
 
 use crate::lsp::{
@@ -55,7 +56,40 @@ impl FileIndexDataBuilder {
     pub fn file_builders(&self) -> &[FileDataBuilder] {
         &self.file_builder
     }
-    pub fn dump_tar(&self, path: &Path, compile_command_json:&Path) -> Result<()> {
+
+    fn add_dir_to_tar(
+        builder: &mut tar::Builder<std::fs::File>,
+        src_dir: &Path,
+        tar_prefix: &Path,
+    ) -> Result<()> {
+        debug!("遍历 {src_dir:?}");
+
+        // 读取目录中的所有条目
+        for entry in fs::read_dir(src_dir)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+
+            if file_type.is_file() {
+                // 如果是文件，直接添加到 tar 包中
+                let mut file = fs::File::open(entry.path())?;
+                // 拼接 tar 包中的相对路径
+                let relative_path = tar_prefix.join(entry.file_name());
+
+                // 确保路径使用 Unix 风格的分隔符
+                let tar_path = relative_path.to_str().unwrap().replace('\\', "/");
+
+                builder.append_file(&tar_path, &mut file)?;
+                debug!("{tar_path}")
+            } else if file_type.is_dir() {
+                // 如果是目录，递归处理，并更新前缀
+                let new_prefix = tar_prefix.join(entry.file_name());
+                Self::add_dir_to_tar(builder, &entry.path(), &new_prefix)?;
+            }
+        }
+
+        Ok(())
+    }
+    pub fn dump_tar(&self, path: &Path, compile_command_json: &Path) -> Result<()> {
         if path.exists() {
             info!("Removing old tar file: {:?}", path);
             std::fs::remove_dir_all(path)
@@ -77,6 +111,18 @@ impl FileIndexDataBuilder {
             ar.append_path_with_name(&file_path, name)?;
             Ok::<(), anyhow::Error>(())
         })?;
+
+        let src_clangd_dir = compile_command_json
+            .parent()
+            .unwrap()
+            .join(".cache")
+            .join("clangd");
+        if src_clangd_dir.exists() {
+            // 关键点：这里设置 tar_prefix 为 "lsp/.cache/clangd"
+            // 这样 .cache/clangd/a/b 就会变成 lsp/.cache/clangd/a/b
+            let tar_prefix = Path::new("lsp").join(".cache").join("clangd");
+            Self::add_dir_to_tar(&mut ar, &src_clangd_dir, &tar_prefix)?;
+        }
         Ok(())
     }
 }

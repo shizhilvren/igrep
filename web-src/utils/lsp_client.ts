@@ -71,7 +71,7 @@ class ResponseLog {
                             fun();
                         }
                     }
-                } 
+                }
                 else if (have_id && have_result && !have_method) {
                     const resolve = this.removeResolve(json.id)
                     if (resolve) {
@@ -173,6 +173,7 @@ export class LSPClient {
         this.request(
             "initialize",
             { "capabilities": { "textDocument": { "codeLens": { "dynamicRegistration": true }, "definition": { "dynamicRegistration": true, "linkSupport": true }, "documentSymbol": { "dynamicRegistration": true, "hierarchicalDocumentSymbolSupport": true, "symbolKind": { "valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] }, "tagSupport": { "valueSet": [1] } }, "hover": { "contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true }, "semanticTokens": { "augmentsSyntaxTokens": true, "dynamicRegistration": true, "formats": ["relative"], "multilineTokenSupport": false, "overlappingTokenSupport": false, "requests": { "full": true }, "tokenModifiers": ["declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"], "tokenTypes": ["namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"] } }, "window": { "workDoneProgress": true } }, "clientInfo": { "name": "igrep-clangd-client", "version": "0.1.0" }, "processId": 2482212, "rootUri": null, "trace": "verbose" }
+            , undefined
         )
     }
 
