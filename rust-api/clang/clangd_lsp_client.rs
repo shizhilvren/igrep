@@ -465,6 +465,12 @@ pub fn main(
     let file_index_data_builder = lsp::builder::FileIndexDataBuilder::try_from(file_index_builder)?;
     info!("file content read done, start init lsp client");
 
+    let client_to_request_sender =
+        init_lsp_client(&rt, log_file, compile_commands_dir.clone(), debug, jobs)?;
+    let (client_to_request_sender, file_index_data_builder) =
+        wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
+    info!("index done");
+
     info!("LSP tar file dump start");
     file_index_data_builder.dump_tar(
         PathBuf::from("lsp_tar").as_path(),
@@ -473,12 +479,6 @@ pub fn main(
             .canonicalize()?,
     )?;
     info!("LSP tar file dump done");
-
-    let client_to_request_sender =
-        init_lsp_client(&rt, log_file, compile_commands_dir, debug, jobs)?;
-    let (client_to_request_sender, file_index_data_builder) =
-        wait_index_done(&rt, client_to_request_sender, file_index_data_builder)?;
-    info!("index done");
 
     let data_tokens = rt.block_on(async {
         let mut join_set = JoinSet::new();

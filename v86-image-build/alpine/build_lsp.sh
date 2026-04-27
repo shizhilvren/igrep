@@ -24,11 +24,13 @@ find "$LSP_TMP" -mindepth 1 -maxdepth 1 -printf "%f\n" | tar -cf "$IMAGES/all.ta
 rm -rf "$LSP_TMP"
 
 tar --concatenate --file="$IMAGES/all.tar" "$OUT_ROOTFS_TAR"
+cp -f $OUT_ROOTFS_TAR "$IMAGES/all.tar"
 
 $PYTHON "$ROOT_PATH"/v86/tools/fs2json.py --zstd --out "$OUT_FSJSON" "$IMAGES/all.tar"
 
 # Note: Not deleting old files here
 mkdir -p "$OUT_ROOTFS_FLAT"
 $PYTHON "$ROOT_PATH"/v86/tools/copy-to-sha256.py --zstd "$IMAGES/all.tar" "$OUT_ROOTFS_FLAT"
+# cd $ROOT_PATH && cargo run --bin copy_to_sha256 -- --zstd "$IMAGES/all.tar" "$OUT_ROOTFS_FLAT"
 
 echo "$OUT_ROOTFS_TAR", "$OUT_ROOTFS_FLAT" and "$OUT_FSJSON" created.

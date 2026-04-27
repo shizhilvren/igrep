@@ -20,7 +20,7 @@ var emulator = new V86({
     bios: { url: path.join(V86_ROOT, "bios/seabios.bin") },
     vga_bios: { url: path.join(V86_ROOT, "bios/vgabios.bin") },
     autostart: true,
-    memory_size: 1 * 1024 * 1024 * 1024,
+    memory_size:   4095 * 1024 * 1024,
     vga_memory_size: 8 * 1024 * 1024,
     network_relay_url: "<UNUSED>",
     bzimage_initrd_from_filesystem: true,
@@ -49,14 +49,25 @@ emulator.add_listener("serial0-output-byte", function (byte) {
     const c = String.fromCharCode(byte);
 
     serial_text += c;
-    // console.log(serial_text)
+    console.log(serial_text)
     if (!booted && serial_text.endsWith("(none):~# ")) {
         booted = true
         console.log("booted")
         console.log("LSP start")
         emulator.serial0_send("\r\n");
-        client.start();
+        // client.start();
         console.log("wait lsp index done")
+        setTimeout(async function () {
+            emulator.serial0_send("sync;echo 3 >/proc/sys/vm/drop_caches\n");
+            const s = await emulator.save_state();
+
+            fs.writeFile(OUTPUT_FILE, new Uint8Array(s), function (e) {
+                if (e) throw e;
+                console.log("Saved as " + OUTPUT_FILE);
+                emulator.destroy();
+            });
+        }, 10 * 1000);
+
     }
     if (booted) {
         client.update(byte);

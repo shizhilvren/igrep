@@ -7,6 +7,10 @@ edition = "2024"
 name = "igrep"
 path = "rust-api/main.rs"
 
+[[bin]]
+name = "copy_to_sha256"
+path = "rust-api/copy_to_sha256/main.rs"
+
 
 [lib]
 crate-type = ["cdylib"]
@@ -50,3 +54,7 @@ indicatif = "0.17.11"
 console-subscriber = "0.5"
 tar = "0.4.45"
 
+walkdir = "2.4" # 用于递归遍历目录
+zstd = "0.13"   # 用于 Zstandard 压缩
+sha2 = "0.10"   # 用于 SHA256 哈希
+hex = "0.4"     # 用于将哈希值转换为十六进制字符串

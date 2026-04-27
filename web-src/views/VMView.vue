@@ -45,7 +45,7 @@ const serialLog = ref("");
 const serialInput = ref("");
 const MAX_SERIAL_LOG_CHARS = 20000;
 
-const scale = ref(2);
+const scale = ref(1);
 
 let disposed = false;
 let emulator: V86 | null = null;
@@ -258,16 +258,16 @@ onUnmounted(() => {
 .vm-stage {
     transform-origin: top left;
     flex: 1;
-    min-height: 0;
+    /* min-height: 0; */
     border-radius: 10px;
-    overflow: hidden;
+    /* overflow: hidden; */
     background: #000;
     border: 1px solid #28374b;
 }
 
 .vm-stage :deep(canvas) {
     width: 100%;
-    height: 100%;
+    height: 200%;
     display: block;
 }
 

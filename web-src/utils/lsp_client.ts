@@ -155,6 +155,7 @@ export class LSPClient {
             "clangd",
             "--compile-commands-dir=/lsp/",
             "--log=info",
+            // "-j=4",
             "\n"
         ].join(" ");
         this.v86.serial0_send(cmd);

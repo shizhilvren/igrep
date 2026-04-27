@@ -1,5 +1,5 @@
 import { LSPClient } from "@/utils/lsp_client";
-import { V86, type V86Image } from "../../v86";
+import {  V86, type V86Image } from "../../v86";
 import WASM_PATH from "../../v86/build/v86.wasm?url";
 import BIOS_URL from "../../v86/bios/seabios.bin?url";
 import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
@@ -22,7 +22,7 @@ export async function startVM(target: HTMLElement | null) {
         vga_memory_size: 8 * 1024 * 1024,
         network_relay_url: "<UNUSED>",
         bzimage_initrd_from_filesystem: true,
-        cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable init_on_free=on",
+        cmdline: "rw root=host9p rootfstype=9p console=ttyS0 rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable init_on_free=on",
         disable_keyboard: false,
         disable_mouse: false,
         serial_console: { type: "none" },
@@ -32,7 +32,8 @@ export async function startVM(target: HTMLElement | null) {
             baseurl: FILE_SYSTEM_FILE,
             basefs: FILE_SYSTEM_URL,
         },
-        initial_state: INIT_STATE_IMAGE,
+        log_level: -1,
+        // initial_state: INIT_STATE_IMAGE,
     });
     let client = new LSPClient(instance);
     const isReady = await client.waitForEmulatorReady();
