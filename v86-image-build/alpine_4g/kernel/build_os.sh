@@ -4,5 +4,5 @@ IMAGE_NAME=i386/alpine-v86
 IMAGES=images
 
 docker build -t alpine-kernel-builder .
-docker cp alpine-kernel-builder:/home/abuild/packages/main/x86/linux-lts-my_custom-*.apk .
+# docker cp alpine-kernel-builder:/home/abuild/packages/main/x86/linux-virt.my_custom-6.18.24-r0.apk ..
 

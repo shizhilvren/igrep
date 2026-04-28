@@ -3,10 +3,10 @@ import {  V86, type V86Image } from "../../v86";
 import WASM_PATH from "../../v86/build/v86.wasm?url";
 import BIOS_URL from "../../v86/bios/seabios.bin?url";
 import VGA_BIOS_URL from "../../v86/bios/vgabios.bin?url";
-import FILE_SYSTEM_URL from "../../v86-image-build/alpine/images/alpine-fs.json?url";
+import FILE_SYSTEM_URL from "../../v86-image-build/alpine_4g/images/alpine-fs.json?url";
 import INIT_STATE from "../../v86-image-build/alpine/images/alpine-state.bin.txt?url";
 
-const FILE_SYSTEM_FILE = import.meta.env.BASE_URL + "../../v86-image-build/alpine/images/alpine-rootfs-flat";
+const FILE_SYSTEM_FILE = import.meta.env.BASE_URL + "../../v86-image-build/alpine_4g/images/alpine-rootfs-flat";
 const BIOS_IMAGE = { url: BIOS_URL } as unknown as V86Image;
 const VGA_BIOS_IMAGE = { url: VGA_BIOS_URL } as unknown as V86Image;
 const INIT_STATE_IMAGE = { url: INIT_STATE, async: false } as unknown as V86Image;
@@ -18,7 +18,7 @@ export async function startVM(target: HTMLElement | null) {
         bios: BIOS_IMAGE,
         vga_bios: VGA_BIOS_IMAGE,
         autostart: true,
-        memory_size: 2 * 1024 * 1024 * 1024,
+        memory_size: 1 * 1024 * 1024 * 1024,
         vga_memory_size: 8 * 1024 * 1024,
         network_relay_url: "<UNUSED>",
         bzimage_initrd_from_filesystem: true,

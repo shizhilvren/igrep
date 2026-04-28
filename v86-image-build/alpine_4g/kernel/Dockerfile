@@ -52,6 +52,8 @@ RUN git checkout -b my-virt-build master
 WORKDIR /home/abuild/aports/main/linux-lts
 RUN cp virt.x86.config virt.my_custom.x86.config
 RUN echo "CONFIG_HIGHMEM4G=y" >> virt.my_custom.x86.config
+RUN echo "CONFIG_HIGHMEM=y" >> virt.my_custom.x86.config
+RUN echo "CONFIG_X86_PAE=y" >> virt.my_custom.x86.config
 
 # 2.5 生成基础校验和
 RUN abuild checksum
@@ -60,11 +62,10 @@ RUN abuild checksum
 RUN FLAVOR=virt.my_custom abuild checksum
 
 # 2.7 执行内核构建 (核心步骤)
-RUN FLAVOR=virt.my_custom abuild -r
+RUN FLAVOR=virt.my_custom abuild -r ||true
 
 # 2.8 验证构建结果
-RUN ls -lh /home/abuild/packages/main/x86/linux-lts-my_custom-*.apk 2>/dev/null || \
-    echo "⚠️ 未找到构建包，请检查错误日志"
+RUN ls -lh /home/abuild/packages/main/x86/linux-virt.my_custom-*.apk 2>/dev/null 
 
 # =====================================================
 # 阶段 3: 保持容器运行
