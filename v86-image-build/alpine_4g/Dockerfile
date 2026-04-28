@@ -1,9 +1,14 @@
 FROM docker.io/i386/alpine:3.23.0
 
-ENV KERNEL=lts
+ENV KERNEL=virt.my_custom
 ENV ADDPKGS=clang-extra-tools 
 
-RUN apk add openrc alpine-base agetty alpine-conf linux-$KERNEL linux-firmware-none $ADDPKGS
+RUN apk add openrc alpine-base agetty alpine-conf  linux-firmware-none
+
+COPY linux-virt.my_custom* /.
+RUN ls linux-$KERNEL* && apk add --allow-untrusted $(ls linux-$KERNEL*)
+RUN apk add linux-$KERNEL
+# RUN apk add $ADDPKGS
 RUN rm -rf /home
 
 RUN sed -i 's/getty 38400 tty1/agetty --autologin root tty1 linux/' /etc/inittab

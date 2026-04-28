@@ -18,7 +18,7 @@ export async function startVM(target: HTMLElement | null) {
         bios: BIOS_IMAGE,
         vga_bios: VGA_BIOS_IMAGE,
         autostart: true,
-        memory_size: 1 * 1024 * 1024 * 1024,
+        memory_size: 2 * 1024 * 1024 * 1024,
         vga_memory_size: 8 * 1024 * 1024,
         network_relay_url: "<UNUSED>",
         bzimage_initrd_from_filesystem: true,
